@@ -250,7 +250,7 @@ class JsonRpcClient:
             stateInvariants = spec_params.get("stateInvariants", [])
             actionInvariants = spec_params.get("actionInvariants", [])
 
-            self._info(f"Specification loaded successfully!")
+            self._info("Specification loaded successfully!")
             self._info(f"Session ID: {self.session_id}")
             self._info(f"Initial transitions: {len(initTransitions)}")
             self._info(f"Next transitions: {len(nextTransitions)}")
@@ -285,7 +285,8 @@ class JsonRpcClient:
         Args:
             nstate: Number of state invariants
             naction: Number of action invariants
-            request_timeout: HTTP request timeout (defaults to solver_timeout + 60s buffer)
+            request_timeout: HTTP request timeout
+                (defaults to solver_timeout + 60s buffer)
         """
         # Use a longer timeout for invariant checking if not specified
         request_timeout = self.solver_timeout + 60
@@ -308,14 +309,16 @@ class JsonRpcClient:
 
                 if status == "VIOLATED":
                     self._info(f"Invariant ID {inv_id} is violated!")
-                    self._info(f"Counterexample:")
+                    self._info("Counterexample:")
                     if response["trace"]:
                         self._info(json.dumps(response["trace"], indent=2))
                     return InvariantViolated(
                         invariant_id=inv_id, trace=response["trace"]
                     )
                 elif status == "UNKNOWN":
-                    self._info(f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)")
+                    self._info(
+                        f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)"
+                    )
                     return InvariantUnknown(invariant_id=inv_id)
 
             except Exception as e:
@@ -364,7 +367,7 @@ class JsonRpcClient:
     def assume_state(
         self, equalities: Dict[str, Any], check_enabled=True
     ) -> AssumptionStatus:
-        """Assume that the provided equalities hold true and check whether they are enabled."""
+        """Assume equalities hold true and check if they are enabled."""
         params = {
             "sessionId": self.session_id,
             "equalities": equalities,
@@ -376,14 +379,14 @@ class JsonRpcClient:
         status = response["status"]
 
         if status == "ENABLED":
-            self._info(f"AssumeState: ENABLED")
+            self._info("AssumeState: ENABLED")
             return AssumptionEnabled()
         elif status == "DISABLED":
-            self._info(f"AssumeState: DISABLED")
+            self._info("AssumeState: DISABLED")
             return AssumptionDisabled()
         else:  # UNKNOWN
             if check_enabled:
-                self._error(f"AssumeState: UNKNOWN")
+                self._error("AssumeState: UNKNOWN")
                 return AssumptionUnknown()
             else:
                 # assume it's enabled for exploration

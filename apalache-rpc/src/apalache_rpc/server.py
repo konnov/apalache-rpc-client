@@ -41,7 +41,8 @@ class ApalacheServer:
 
         if self.hostname != "localhost":
             self.log.error(
-                f"Apalache server is not running on {self.hostname}, and it's not localhost"
+                f"Apalache server is not running on {self.hostname}, "
+                "and it's not localhost"
             )
             return False
 
@@ -101,10 +102,8 @@ class ApalacheServer:
                     response = requests.get(
                         f"http://localhost:{self.port}/rpc", timeout=1
                     )
-                    if response.status_code in [
-                        200,
-                        405,
-                    ]:  # 405 is expected for GET on JSON-RPC endpoint
+                    # 405 is expected for GET on JSON-RPC endpoint
+                    if response.status_code in [200, 405]:
                         self.log.info(
                             f"Server started successfully on port {self.port}"
                         )
@@ -116,10 +115,11 @@ class ApalacheServer:
                 if self.server_process.poll() is not None:
                     # Process has terminated
                     self.server_process.wait()  # Clean up the process
-                    self.log.info(f"Server process terminated unexpectedly!")
+                    self.log.info("Server process terminated unexpectedly!")
                     self.log.info(f"Exit code: {self.server_process.returncode}")
                     self.log.info(
-                        f"Check logs in {self.stdout_file} and {self.stderr_file} for details"
+                        f"Check logs in {self.stdout_file} and "
+                        f"{self.stderr_file} for details"
                     )
                     return False
 
@@ -132,17 +132,20 @@ class ApalacheServer:
             # Check process output before giving up
             if self.server_process.poll() is not None:
                 self.server_process.wait()  # Clean up the process
-                self.log.info(f"Server process terminated during startup!")
+                self.log.info("Server process terminated during startup!")
                 self.log.info(f"Exit code: {self.server_process.returncode}")
                 self.log.info(
-                    f"Check logs in {self.stdout_file} and {self.stderr_file} for details"
+                    f"Check logs in {self.stdout_file} and "
+                    f"{self.stderr_file} for details"
                 )
             else:
                 self.log.info(
-                    "Server process is still running but not responding to HTTP requests"
+                    "Server process is still running but not responding "
+                    "to HTTP requests"
                 )
                 self.log.info(
-                    f"Check logs in {self.stdout_file} and {self.stderr_file} for details"
+                    f"Check logs in {self.stdout_file} and "
+                    f"{self.stderr_file} for details"
                 )
 
             self.log.error("Error: Server failed to start within timeout")
