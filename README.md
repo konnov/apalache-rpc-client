@@ -1,5 +1,11 @@
 # Apalache RPC Client
 
+[![CI](https://github.com/konnov/apalache-rpc-client/actions/workflows/ci.yml/badge.svg)](https://github.com/konnov/apalache-rpc-client/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/konnov/apalache-rpc-client/branch/main/graph/badge.svg)](https://codecov.io/gh/konnov/apalache-rpc-client)
+[![PyPI version](https://badge.fury.io/py/apalache-rpc-client.svg)](https://badge.fury.io/py/apalache-rpc-client)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/github/license/konnov/apalache-rpc-client)](LICENSE)
+
 Minimalistic Python client for interaction with the Apalache model checker over
 JSON RPC.
 
