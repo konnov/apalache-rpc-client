@@ -152,7 +152,7 @@ class ApalacheServer:
             self.log.error(f"Error starting server: {e}")
             return False
 
-    def stop_server(self):
+    def stop_server(self) -> bool:
         """Stop the Apalache server."""
 
         if not self.server_process:
@@ -172,6 +172,8 @@ class ApalacheServer:
                 self.server_process.wait()
             self.server_process = None
             self.log.info("Apalache server stopped successfully")
+        
+        return True
 
     def _find_apalache_executable(self) -> Optional[str]:
         """Find the apalache-mc executable, either in PATH or in APALACHE_HOME/bin."""
