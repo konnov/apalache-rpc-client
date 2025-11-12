@@ -316,9 +316,7 @@ class JsonRpcClient:
                         invariant_id=inv_id, trace=response["trace"]
                     )
                 elif status == "UNKNOWN":
-                    self._info(
-                        f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)"
-                    )
+                    self._info(f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)")
                     return InvariantUnknown(invariant_id=inv_id)
 
             except Exception as e:
