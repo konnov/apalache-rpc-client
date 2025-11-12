@@ -31,6 +31,8 @@ Make sure you have Apalache installed. Follow the [Apalache Installation Instruc
 ### Install Apalache
 
 ```shell
+# Install Java if you don't have it yet, e.g., on macOS:
+brew install temurin@21
 # Download Apalache if you don't have it yet
 curl -L -o apalache.tgz https://github.com/apalache-mc/apalache/releases/latest/download/apalache.tgz
 tar -xzf apalache.tgz

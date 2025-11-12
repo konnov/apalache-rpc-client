@@ -1,3 +1,6 @@
+# Stub tests to verify that imports work
+# The actual tests are in ../../README.md
+
 from apalache_rpc.client import JsonRpcClient
 
 
@@ -6,4 +9,4 @@ class TestImports:
 
     def test_ok(self):
         """Trivial test"""
-        pass
+        assert JsonRpcClient.__name__ == "JsonRpcClient"
