@@ -172,7 +172,7 @@ class ApalacheServer:
                 self.server_process.wait()
             self.server_process = None
             self.log.info("Apalache server stopped successfully")
-        
+
         return True
 
     def _find_apalache_executable(self) -> Optional[str]:
