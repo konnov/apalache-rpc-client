@@ -1,0 +1,89 @@
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Needed to create releases and push tags
+      pull-requests: write  # Needed to create PRs
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+
+    - name: Configure git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Bump version and get new version
+      working-directory: ./aplache-rpc
+      run: |
+        # Bump version
+        poetry version ${{ github.event.inputs.version_bump }}
+        NEW_VERSION=$(poetry version --short)
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+        echo "New version: $NEW_VERSION"
+
+    - name: Update version in pyproject.toml and commit
+      working-directory: ./aplache-rpc
+      run: |
+        # Commit version bump
+        git add pyproject.toml
+        git commit -m "🔖 Bump version to ${NEW_VERSION}"
+        git push origin main
+
+    - name: Create and push tag
+      run: |
+        git tag "v${NEW_VERSION}"
+        git push origin "v${NEW_VERSION}"
+
+    - name: Build package
+      working-directory: ./aplache-rpc
+      run: |
+        poetry install
+        poetry build
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: "v${{ env.NEW_VERSION }}"
+        name: "Release v${{ env.NEW_VERSION }}"
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: ${{ github.event.inputs.prerelease }}
+        files: |
+          aplache-rpc/dist/*
+        generate_release_notes: true
