@@ -10,9 +10,9 @@ Igor Konnov, 2025
 """
 
 import base64
-from dataclasses import dataclass
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 import requests
