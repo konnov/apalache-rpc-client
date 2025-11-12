@@ -19,60 +19,76 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+
 @dataclass
 class TransitionDisabled:
     trans_id: int
+
 
 @dataclass
 class TransitionEnabled:
     trans_id: int
 
+
 @dataclass
 class TransitionUnknown:
     trans_id: int
 
+
 EnabledStatus = Union[TransitionEnabled, TransitionDisabled, TransitionUnknown]
+
 
 @dataclass
 class AssumptionDisabled:
     pass
 
+
 @dataclass
 class AssumptionEnabled:
     pass
+
 
 @dataclass
 class AssumptionUnknown:
     pass
 
+
 AssumptionStatus = Union[AssumptionEnabled, AssumptionDisabled, AssumptionUnknown]
+
 
 @dataclass
 class InvariantSatisfied:
     pass
+
 
 @dataclass
 class InvariantViolated:
     invariant_id: int
     trace: List[Dict[str, Any]]
 
+
 @dataclass
 class InvariantUnknown:
     invariant_id: int
 
+
 InvariantStatus = Union[InvariantSatisfied, InvariantViolated, InvariantUnknown]
+
 
 @dataclass
 class NextModelTrue:
     pass
 
+
 @dataclass
 class NextModelFalse:
     pass
 
+
 @dataclass
 class NextModelUnknown:
     pass
+
 
 NextModelStatus = Union[NextModelTrue, NextModelFalse, NextModelUnknown]
 
@@ -90,7 +106,9 @@ class JsonRpcError(Exception):
 class JsonRpcClient:
     """Client for JSON-RPC communication with Apalache server."""
 
-    def __init__(self, hostname: str = "localhost", port: int = 8822, solver_timeout: int = 600):
+    def __init__(
+        self, hostname: str = "localhost", port: int = 8822, solver_timeout: int = 600
+    ):
         """
         Initialize the JSON-RPC client.
 
@@ -100,7 +118,7 @@ class JsonRpcClient:
         """
         self.rpc_url = f"http://{hostname}:{port}/rpc"
         self.port = port
-        self.conn_timeout = 10.0 # seconds
+        self.conn_timeout = 10.0  # seconds
         self.solver_timeout = solver_timeout  # seconds
         self.session_id: Optional[str] = None
         self._request_id = 0
@@ -110,26 +128,25 @@ class JsonRpcClient:
         self._session = requests.Session()
 
         # Set keep-alive headers
-        self._session.headers.update({
-            'Connection': 'keep-alive',
-            'Content-Type': 'application/json'
-        })
+        self._session.headers.update(
+            {"Connection": "keep-alive", "Content-Type": "application/json"}
+        )
 
         # Configure connection pooling with retry strategy
         retry_strategy = Retry(
-            total=3,                    # Total number of retries
-            backoff_factor=0.1,         # Backoff factor between retries
+            total=3,  # Total number of retries
+            backoff_factor=0.1,  # Backoff factor between retries
             status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
-            allowed_methods=["POST"]    # Only retry POST requests
+            allowed_methods=["POST"],  # Only retry POST requests
         )
 
         adapter = HTTPAdapter(
-            pool_connections=1,         # Number of connection pools
-            pool_maxsize=10,           # Number of connections to save in the pool
-            max_retries=retry_strategy  # Retry strategy
+            pool_connections=1,  # Number of connection pools
+            pool_maxsize=10,  # Number of connections to save in the pool
+            max_retries=retry_strategy,  # Retry strategy
         )
-        self._session.mount('http://', adapter)
-        self._session.mount('https://', adapter)
+        self._session.mount("http://", adapter)
+        self._session.mount("https://", adapter)
 
     def _info(self, msg: str):
         self.log.info(msg)
@@ -142,23 +159,32 @@ class JsonRpcClient:
         self._request_id += 1
         return self._request_id
 
-    def _rpc_call(self, method: str, params: Any = None, timeout: Optional[int] = None) -> Any:
+    def _rpc_call(
+        self, method: str, params: Any = None, timeout: Optional[int] = None
+    ) -> Any:
         # Use solver timeout for long-running operations, connection timeout for others
         if timeout is None:
             # Long-running operations that might need more time
             long_running_methods = {
-                'loadSpec', 'assumeTransition', 'checkInvariant', 'nextStep', 'query', 'nextModel'
-           }
+                "loadSpec",
+                "assumeTransition",
+                "checkInvariant",
+                "nextStep",
+                "query",
+                "nextModel",
+            }
             if method in long_running_methods:
                 timeout = self.solver_timeout + 30  # Add buffer to solver timeout
             else:
-                timeout = max(60, int(self.conn_timeout * 6))  # Minimum 60s for other operations
+                timeout = max(
+                    60, int(self.conn_timeout * 6)
+                )  # Minimum 60s for other operations
 
         payload = {
-            'jsonrpc': '2.0',
-            'method': method,
-            'params': params or {},
-            'id': self._next_request_id(),
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": self._next_request_id(),
         }
 
         try:
@@ -172,13 +198,23 @@ class JsonRpcClient:
             raise JsonRpcError(-3, f"Request failed: {e}")
 
         data = response.json()
-        if 'error' in data:
-            error = data['error']
-            raise JsonRpcError(error.get('code', -4), error.get('message', str(error)), error.get('data'))
-        return data.get('result')
+        if "error" in data:
+            error = data["error"]
+            raise JsonRpcError(
+                error.get("code", -4),
+                error.get("message", str(error)),
+                error.get("data"),
+            )
+        return data.get("result")
 
-    def load_spec(self, sources: List[str], init: str, next: str,
-                  invariants: List[str], view: Optional[str]) -> Any:
+    def load_spec(
+        self,
+        sources: List[str],
+        init: str,
+        next: str,
+        invariants: List[str],
+        view: Optional[str],
+    ) -> Any:
         """Load a TLA+ specification."""
         self._info(f"Loading specification from: {', '. join(sources)}")
 
@@ -186,9 +222,9 @@ class JsonRpcClient:
         # Read the specification file
         for filename in sources:
             try:
-                with open(filename, 'r', encoding='utf-8') as f:
+                with open(filename, "r", encoding="utf-8") as f:
                     text = f.read()
-                    encoded = base64.b64encode(text.encode('utf-8')).decode('ascii')
+                    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
                     sources_base64.append(encoded)
             except Exception as e:
                 self._error(f"Error reading specification file: {e}")
@@ -222,11 +258,11 @@ class JsonRpcClient:
             self._info(f"Action invariants: {len(actionInvariants)}")
 
             return {
-                'init': initTransitions,
-                'next': nextTransitions,
-                'state': stateInvariants,
-                'action': actionInvariants,
-                'snapshot_id': snapshot_id
+                "init": initTransitions,
+                "next": nextTransitions,
+                "state": stateInvariants,
+                "action": actionInvariants,
+                "snapshot_id": snapshot_id,
             }
 
         except Exception as e:
@@ -254,17 +290,20 @@ class JsonRpcClient:
         # Use a longer timeout for invariant checking if not specified
         request_timeout = self.solver_timeout + 60
 
-        for (kind, inv_id) in [('STATE', i) for i in range(nstate)] + \
-                      [('ACTION', i) for i in range(naction)]:
+        for kind, inv_id in [("STATE", i) for i in range(nstate)] + [
+            ("ACTION", i) for i in range(naction)
+        ]:
             params = {
                 "sessionId": self.session_id,
                 "invariantId": inv_id,
                 "kind": kind,
-                "timeoutSec": self.solver_timeout
+                "timeoutSec": self.solver_timeout,
             }
 
             try:
-                response = self._rpc_call("checkInvariant", params, timeout=request_timeout)
+                response = self._rpc_call(
+                    "checkInvariant", params, timeout=request_timeout
+                )
                 status = response["invariantStatus"]
 
                 if status == "VIOLATED":
@@ -272,7 +311,9 @@ class JsonRpcClient:
                     self._info(f"Counterexample:")
                     if response["trace"]:
                         self._info(json.dumps(response["trace"], indent=2))
-                    return InvariantViolated(invariant_id=inv_id, trace=response["trace"])
+                    return InvariantViolated(
+                        invariant_id=inv_id, trace=response["trace"]
+                    )
                 elif status == "UNKNOWN":
                     self._info(f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)")
                     return InvariantUnknown(invariant_id=inv_id)
@@ -292,13 +333,15 @@ class JsonRpcClient:
 
         self._rpc_call("rollback", params)
 
-    def assume_transition(self, transition_id: int, check_enabled = True) -> EnabledStatus:
+    def assume_transition(
+        self, transition_id: int, check_enabled=True
+    ) -> EnabledStatus:
         """Assume a transition and check if it's enabled."""
         params = {
             "sessionId": self.session_id,
             "transitionId": transition_id,
             "checkEnabled": check_enabled,
-            "timeoutSec": self.solver_timeout
+            "timeoutSec": self.solver_timeout,
         }
 
         response = self._rpc_call("assumeTransition", params)
@@ -318,13 +361,15 @@ class JsonRpcClient:
                 # assume it's enabled for exploration
                 return TransitionEnabled(transition_id)
 
-    def assume_state(self, equalities: Dict[str, Any], check_enabled = True) -> AssumptionStatus:
+    def assume_state(
+        self, equalities: Dict[str, Any], check_enabled=True
+    ) -> AssumptionStatus:
         """Assume that the provided equalities hold true and check whether they are enabled."""
         params = {
             "sessionId": self.session_id,
             "equalities": equalities,
             "checkEnabled": check_enabled,
-            "timeoutSec": self.solver_timeout
+            "timeoutSec": self.solver_timeout,
         }
 
         response = self._rpc_call("assumeState", params)
@@ -360,7 +405,7 @@ class JsonRpcClient:
             **kwargs,
             "sessionId": self.session_id,
             "timeoutSec": self.solver_timeout,
-            "kinds": kinds
+            "kinds": kinds,
         }
 
         response = self._rpc_call("query", params)
@@ -377,7 +422,7 @@ class JsonRpcClient:
         params = {
             "sessionId": self.session_id,
             "timeoutSec": self.solver_timeout,
-            "operator": operator
+            "operator": operator,
         }
 
         response = self._rpc_call("nextModel", params)
@@ -407,7 +452,7 @@ class JsonRpcClient:
 
     def close(self):
         """Close the HTTP session and clean up resources."""
-        if hasattr(self, '_session') and self._session:
+        if hasattr(self, "_session") and self._session:
             self._session.close()
 
     def __enter__(self):
