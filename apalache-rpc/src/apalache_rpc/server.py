@@ -23,14 +23,14 @@ import requests
 class ApalacheServer:
     """Manages the Apalache server process."""
 
-    def __init__(self, log_dir: str, hostname: str, port: int = 8822):
+    def __init__(self, log_dir: str, hostname: str, port: int = 8822) -> None:
         self.hostname = hostname
         self.port = port
-        self.server_process = None
+        self.server_process: Optional[subprocess.Popen[str]] = None
         self.log_dir = Path(log_dir)
         self.log = logging.getLogger(__name__)
-        self.stdout_file = None
-        self.stderr_file = None
+        self.stdout_file: Optional[str] = None
+        self.stderr_file: Optional[str] = None
 
     def start_server(self) -> bool:
         """Start the Apalache server in explorer mode."""
@@ -83,14 +83,27 @@ class ApalacheServer:
                         text=True,
                     )
                 else:
-                    self.server_process = subprocess.Popen(
-                        cmd,
-                        stdout=stdout_f,
-                        stderr=stderr_f,
-                        stdin=subprocess.DEVNULL,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-                        text=True,
-                    )
+                    # CREATE_NEW_PROCESS_GROUP is only available on Windows
+                    import sys
+
+                    if sys.platform == "win32":
+                        self.server_process = subprocess.Popen(
+                            cmd,
+                            stdout=stdout_f,
+                            stderr=stderr_f,
+                            stdin=subprocess.DEVNULL,
+                            # type: ignore[attr-defined]
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                            text=True,
+                        )
+                    else:
+                        self.server_process = subprocess.Popen(
+                            cmd,
+                            stdout=stdout_f,
+                            stderr=stderr_f,
+                            stdin=subprocess.DEVNULL,
+                            text=True,
+                        )
 
             stderr_f.close()
             stdout_f.close()

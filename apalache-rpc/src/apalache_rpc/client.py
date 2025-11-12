@@ -148,10 +148,10 @@ class JsonRpcClient:
         self._session.mount("http://", adapter)
         self._session.mount("https://", adapter)
 
-    def _info(self, msg: str):
+    def _info(self, msg: str) -> None:
         self.log.info(msg)
 
-    def _error(self, msg: str):
+    def _error(self, msg: str) -> None:
         self.log.error(msg)
 
     def _next_request_id(self) -> int:
@@ -269,7 +269,7 @@ class JsonRpcClient:
             self._error(f"Error loading specification: {e}")
             return None
 
-    def dispose_spec(self):
+    def dispose_spec(self) -> None:
         """Dispose of the current specification session."""
         if self.session_id:
             params = {"sessionId": self.session_id}
@@ -325,7 +325,7 @@ class JsonRpcClient:
 
         return InvariantSatisfied()
 
-    def rollback(self, snapshot_id: int):
+    def rollback(self, snapshot_id: int) -> None:
         """Roll back to an earlier snapshot."""
         params = {
             "sessionId": self.session_id,
@@ -335,7 +335,7 @@ class JsonRpcClient:
         self._rpc_call("rollback", params)
 
     def assume_transition(
-        self, transition_id: int, check_enabled=True
+        self, transition_id: int, check_enabled: bool = True
     ) -> EnabledStatus:
         """Assume a transition and check if it's enabled."""
         params = {
@@ -363,7 +363,7 @@ class JsonRpcClient:
                 return TransitionEnabled(transition_id)
 
     def assume_state(
-        self, equalities: Dict[str, Any], check_enabled=True
+        self, equalities: Dict[str, Any], check_enabled: bool = True
     ) -> AssumptionStatus:
         """Assume equalities hold true and check if they are enabled."""
         params = {
@@ -398,9 +398,9 @@ class JsonRpcClient:
         new_step = response["newStepNo"]
 
         self._info(f"Moved to step {new_step}")
-        return response["snapshotId"]
+        return int(response["snapshotId"])
 
-    def query(self, kinds: List[str], **kwargs) -> Dict[str, Any]:
+    def query(self, kinds: List[str], **kwargs: Any) -> Dict[str, Any]:
         """Query against the current context"""
         params = {
             **kwargs,
@@ -442,7 +442,7 @@ class JsonRpcClient:
             "hasNext": to_status(response["hasNext"]),
         }
 
-    def set_solver_timeout(self, timeout: int):
+    def set_solver_timeout(self, timeout: int) -> None:
         """Update the solver timeout for long-running operations.
 
         Args:
@@ -451,15 +451,15 @@ class JsonRpcClient:
         self.solver_timeout = timeout
         self._info(f"Solver timeout updated to {timeout} seconds")
 
-    def close(self):
+    def close(self) -> None:
         """Close the HTTP session and clean up resources."""
         if hasattr(self, "_session") and self._session:
             self._session.close()
 
-    def __enter__(self):
+    def __enter__(self) -> "JsonRpcClient":
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit with cleanup."""
         self.close()
