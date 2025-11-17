@@ -46,6 +46,7 @@ Init ==
 \* Buggy PUSH: Advance tail, increment count, but no fullness check!
 \* @type: Int => Bool;
 Push(x) ==
+  Push::
   LET nextTail == NextIdx(tail) IN
   /\ buffer' = [buffer EXCEPT ![tail] = x]
   /\ head' = head
@@ -54,6 +55,7 @@ Push(x) ==
 
 \* POP: Only allowed when count > 0.
 Pop ==
+  Pop::
   LET nextHead == NextIdx(head) IN
   /\ count > 0
   /\ UNCHANGED buffer
@@ -73,5 +75,9 @@ Spec == Init /\ [][Next]_vars
 \* Safety property we *intend* to hold, but it is violated:
 \* count must never exceed the buffer capacity.
 SafeInv == count <= BUFFER_SIZE
+
+\* View for the model checker to observe the count variable.
+\* @type: <<Int>>;
+CountView == <<count>>
 
 ======================================================================================
