@@ -49,7 +49,7 @@ jobs:
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
     - name: Bump version and get new version
-      working-directory: ./apalache-rpc
+      working-directory: ./apalache-rpc-client
       run: |
         # Bump version
         poetry version ${{ github.event.inputs.version_bump }}
@@ -58,7 +58,7 @@ jobs:
         echo "New version: $NEW_VERSION"
 
     - name: Update version in pyproject.toml and commit
-      working-directory: ./apalache-rpc
+      working-directory: ./apalache-rpc-client
       run: |
         # Commit version bump
         git add pyproject.toml
@@ -71,7 +71,7 @@ jobs:
         git push origin "v${NEW_VERSION}"
 
     - name: Build package
-      working-directory: ./apalache-rpc
+      working-directory: ./apalache-rpc-client
       run: |
         poetry install
         poetry build
@@ -85,5 +85,5 @@ jobs:
         draft: false
         prerelease: ${{ github.event.inputs.prerelease }}
         files: |
-          apalache-rpc/dist/*
+          apalache-rpc-client/dist/*
         generate_release_notes: true
