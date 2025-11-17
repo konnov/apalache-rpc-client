@@ -182,12 +182,12 @@ class JsonRpcClient:
     def __init__(
         self, hostname: str = "localhost", port: int = 8822, solver_timeout: int = 600
     ):
-        """
-        Initialize the JSON-RPC client.
+        """Initialize the JSON-RPC client.
 
         Args:
-            hostname: hostname of the JSON-RPC server
-            port: port of the JSON-RPC server
+            hostname: Hostname of the JSON-RPC server (default: "localhost")
+            port: Port of the JSON-RPC server (default: 8822)
+            solver_timeout: Timeout for solver operations in seconds (default: 600)
         """
         self.rpc_url = f"http://{hostname}:{port}/rpc"
         self.port = port
@@ -222,19 +222,46 @@ class JsonRpcClient:
         self._session.mount("https://", adapter)
 
     def _info(self, msg: str) -> None:
+        """Log an info message.
+
+        Args:
+            msg: The message to log
+        """
         self.log.info(msg)
 
     def _error(self, msg: str) -> None:
+        """Log an error message.
+
+        Args:
+            msg: The error message to log
+        """
         self.log.error(msg)
 
     def _next_request_id(self) -> int:
-        """Generate next request ID."""
+        """Generate next request ID.
+
+        Returns:
+            The next sequential request ID
+        """
         self._request_id += 1
         return self._request_id
 
     def _rpc_call(
         self, method: str, params: Any = None, timeout: Optional[int] = None
     ) -> Any:
+        """Execute a JSON-RPC call to the server.
+
+        Args:
+            method: The RPC method name to call
+            params: Optional parameters for the RPC method
+            timeout: Optional timeout in seconds (auto-determined if not provided)
+
+        Returns:
+            The result from the RPC call
+
+        Raises:
+            JsonRpcError: If the RPC call fails or times out
+        """
         # Use solver timeout for long-running operations, connection timeout for others
         if timeout is None:
             # Long-running operations that might need more time
@@ -289,7 +316,27 @@ class JsonRpcClient:
         invariants: List[str],
         view: Optional[str],
     ) -> Any:
-        """Load a TLA+ specification."""
+        """Load a TLA+ specification into the Apalache server.
+
+        Args:
+            sources: List of file paths to TLA+ specification files
+            init: Name of the initialization predicate
+            next: Name of the next-state relation
+            invariants: List of invariant names to check
+            view: Optional view operator name for state projection
+
+        Returns:
+            Dictionary containing:
+                - init: List of initial transitions
+                - next: List of next transitions
+                - state: List of state invariants
+                - action: List of action invariants
+                - snapshot_id: The snapshot ID after loading
+            Returns None if loading fails
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         self._info(f"Loading specification from: {', '. join(sources)}")
 
         sources_base64 = []
@@ -344,7 +391,11 @@ class JsonRpcClient:
             return None
 
     def dispose_spec(self) -> None:
-        """Dispose of the current specification session."""
+        """Dispose of the current specification session.
+
+        Cleans up resources associated with the current session on the server.
+        Should be called when done working with a specification.
+        """
         if self.session_id:
             params = {"sessionId": self.session_id}
             try:
@@ -354,13 +405,22 @@ class JsonRpcClient:
                 self._error(f"Error disposing specification: {e}")
 
     def check_invariants(self, nstate: int, naction: int) -> InvariantStatus:
-        """Check all invariants. Returns violated invariant name or None.
+        """Check all invariants against the current state.
+
+        Iterates through all state and action invariants, checking each one
+        using the solver. Returns immediately if a violation is found.
 
         Args:
-            nstate: Number of state invariants
-            naction: Number of action invariants
-            request_timeout: HTTP request timeout
-                (defaults to solver_timeout + 60s buffer)
+            nstate: Number of state invariants to check
+            naction: Number of action invariants to check
+
+        Returns:
+            InvariantSatisfied if all invariants hold,
+            InvariantViolated with counterexample if a violation is found,
+            InvariantUnknown if the solver times out or encounters an error
+
+        Raises:
+            JsonRpcError: If the RPC call fails
         """
         # Use a longer timeout for invariant checking if not specified
         request_timeout = self.solver_timeout + 60
@@ -402,7 +462,14 @@ class JsonRpcClient:
         return InvariantSatisfied()
 
     def rollback(self, snapshot_id: int) -> None:
-        """Roll back to an earlier snapshot."""
+        """Roll back the exploration state to an earlier snapshot.
+
+        Args:
+            snapshot_id: The snapshot ID to roll back to
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {
             "sessionId": self.session_id,
             "snapshotId": snapshot_id,
@@ -413,7 +480,24 @@ class JsonRpcClient:
     def assume_transition(
         self, transition_id: int, check_enabled: bool = True
     ) -> EnabledStatus:
-        """Assume a transition and check if it's enabled."""
+        """Assume a transition is taken and check if it's enabled.
+
+        Constrains the current exploration state by assuming the specified
+        transition is taken, and optionally checks if it's actually enabled.
+
+        Args:
+            transition_id: The ID of the transition to assume
+            check_enabled: Whether to check if the transition is enabled
+                (default: True)
+
+        Returns:
+            TransitionEnabled if the transition is enabled,
+            TransitionDisabled if the transition is disabled,
+            TransitionUnknown if the solver cannot determine the status
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {
             "sessionId": self.session_id,
             "transitionId": transition_id,
@@ -442,7 +526,24 @@ class JsonRpcClient:
     def assume_state(
         self, equalities: Dict[str, Any], check_enabled: bool = True
     ) -> AssumptionStatus:
-        """Assume equalities hold true and check if they are enabled."""
+        """Assume state equalities hold and check if the assumption is satisfiable.
+
+        Constrains the current exploration state by assuming certain variables
+        are equal to specific values.
+
+        Args:
+            equalities: Dictionary mapping variable names to their assumed values
+            check_enabled: Whether to check if the assumption is satisfiable
+                (default: True)
+
+        Returns:
+            AssumptionEnabled if the assumption is satisfiable,
+            AssumptionDisabled if the assumption is unsatisfiable,
+            AssumptionUnknown if the solver cannot determine the status
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {
             "sessionId": self.session_id,
             "equalities": equalities,
@@ -469,7 +570,16 @@ class JsonRpcClient:
                 return AssumptionEnabled(snapshot_id)
 
     def next_step(self) -> int:
-        """Move to the next step."""
+        """Move to the next step in the exploration.
+
+        Advances the exploration by one step, creating a new snapshot.
+
+        Returns:
+            The snapshot ID of the new step
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {"sessionId": self.session_id}
 
         response = self._rpc_call("nextStep", params)
@@ -479,7 +589,18 @@ class JsonRpcClient:
         return int(response["snapshotId"])
 
     def query(self, kinds: List[str], **kwargs: Any) -> Dict[str, Any]:
-        """Query against the current context"""
+        """Execute a query against the current exploration context.
+
+        Args:
+            kinds: List of query kinds (e.g., ["OPERATOR"] or ["TRACE"])
+            **kwargs: Additional query-specific parameters
+
+        Returns:
+            Dictionary containing query results based on the requested kinds
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {
             **kwargs,
             "sessionId": self.session_id,
@@ -497,7 +618,20 @@ class JsonRpcClient:
         return result
 
     def next_model(self, operator: str) -> Dict[str, Any]:
-        """Try to compute next model"""
+        """Attempt to compute the next model for a given operator.
+
+        Args:
+            operator: The operator expression to evaluate for the next model
+
+        Returns:
+            Dictionary containing:
+                - oldValue: The old value of the operator
+                - hasOld: Status indicating if old value exists (NextModelStatus)
+                - hasNext: Status indicating if next value exists (NextModelStatus)
+
+        Raises:
+            JsonRpcError: If the RPC call fails
+        """
         params = {
             "sessionId": self.session_id,
             "timeoutSec": self.solver_timeout,
@@ -530,14 +664,33 @@ class JsonRpcClient:
         self._info(f"Solver timeout updated to {timeout} seconds")
 
     def close(self) -> None:
-        """Close the HTTP session and clean up resources."""
+        """Close the HTTP session and clean up resources.
+
+        Should be called when done with the client to properly release
+        network connections. Automatically called when using the client
+        as a context manager.
+        """
         if hasattr(self, "_session") and self._session:
             self._session.close()
 
     def __enter__(self) -> "JsonRpcClient":
-        """Context manager entry."""
+        """Enter the context manager.
+
+        Returns:
+            The client instance for use in the context
+
+        Example:
+            with JsonRpcClient() as client:
+                client.load_spec(...)
+        """
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Context manager exit with cleanup."""
+        """Exit the context manager and clean up resources.
+
+        Args:
+            exc_type: Exception type if an exception occurred
+            exc_val: Exception value if an exception occurred
+            exc_tb: Exception traceback if an exception occurred
+        """
         self.close()

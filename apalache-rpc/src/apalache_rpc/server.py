@@ -16,9 +16,30 @@ import requests
 
 
 class ApalacheServer:
-    """Manages the Apalache server process."""
+    """Manages the Apalache server process lifecycle.
+
+    Provides functionality to start, stop, and monitor an Apalache server
+    instance running in explorer mode. Currently supports running the server
+    on localhost using a local installation of Apalache.
+
+    Attributes:
+        hostname: The hostname where the server runs
+        port: The port number for the server
+        server_process: The subprocess instance of the running server
+        log_dir: Directory for server log files
+        log: Logger instance for this class
+        stdout_file: Path to the server's stdout log file
+        stderr_file: Path to the server's stderr log file
+    """
 
     def __init__(self, log_dir: str, hostname: str, port: int = 8822) -> None:
+        """Initialize the Apalache server manager.
+
+        Args:
+            log_dir: Directory path for storing server logs
+            hostname: Hostname where the server will run
+            port: Port number for the server (default: 8822)
+        """
         self.hostname = hostname
         self.port = port
         self.server_process: Optional[subprocess.Popen[str]] = None
@@ -28,7 +49,22 @@ class ApalacheServer:
         self.stderr_file: Optional[str] = None
 
     def start_server(self) -> bool:
-        """Start the Apalache server in explorer mode."""
+        """Start the Apalache server in explorer mode.
+
+        Launches an Apalache server process on the configured hostname and port.
+        If the server is already running, returns immediately with success.
+        The server process runs in the background and logs are redirected to files.
+
+        Returns:
+            True if the server started successfully or was already running,
+            False if the server failed to start
+
+        Note:
+            - Only supports starting servers on localhost
+            - Requires apalache-mc executable in PATH or APALACHE_HOME/bin
+            - Logs are written to log_dir/apalache_{port}.out and .err
+            - Waits up to 30 seconds for the server to become responsive
+        """
         # Check if server is already running
         if self._is_server_running():
             self.log.info(f"Apalache server is already running on port {self.port}")
@@ -166,7 +202,19 @@ class ApalacheServer:
             return False
 
     def stop_server(self) -> bool:
-        """Stop the Apalache server."""
+        """Stop the Apalache server gracefully.
+
+        Sends a termination signal to the server process and waits for it
+        to exit. If the server doesn't terminate within 5 seconds, forcefully
+        kills the process.
+
+        Returns:
+            True indicating the stop operation was attempted
+
+        Note:
+            If the server is not managed by this instance (server_process is None),
+            a warning is logged but the method still returns True.
+        """
 
         if not self.server_process:
             self.log.warning(
@@ -189,7 +237,15 @@ class ApalacheServer:
         return True
 
     def _find_apalache_executable(self) -> Optional[str]:
-        """Find the apalache-mc executable, either in PATH or in APALACHE_HOME/bin."""
+        """Find the apalache-mc executable.
+
+        Searches for the apalache-mc executable in the following order:
+        1. In the system PATH
+        2. In APALACHE_HOME/bin directory (if APALACHE_HOME is set)
+
+        Returns:
+            Path to the apalache-mc executable if found, None otherwise
+        """
 
         # First, check PATH
         apalache_cmd = shutil.which("apalache-mc")
@@ -206,7 +262,15 @@ class ApalacheServer:
         return None
 
     def _is_server_running(self) -> bool:
-        """Check if the Apalache server is running on the specified port."""
+        """Check if the Apalache server is running and responsive.
+
+        Sends an HTTP GET request to the server's RPC endpoint to verify
+        it is running and responding to requests.
+
+        Returns:
+            True if the server responds with status 200 or 405 (405 is
+            expected for GET requests on JSON-RPC endpoints), False otherwise
+        """
         try:
             response = requests.get(
                 f"http://{self.hostname}:{self.port}/rpc", timeout=5
