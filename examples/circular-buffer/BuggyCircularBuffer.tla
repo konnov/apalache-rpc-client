@@ -30,9 +30,6 @@ VARIABLES
     \* @type: Int;
     count
 
-\* Compute the next index in a circular manner.
-NextIdx(i) == (i + 1) % BUFFER_SIZE
-
 \* Initial state
 Init ==
   /\ buffer = [ i \in 0..(BUFFER_SIZE - 1) |-> 0 ]
@@ -44,7 +41,7 @@ Init ==
 \* @type: Int => Bool;
 Push(x) ==
   Push::
-  LET nextTail == NextIdx(tail) IN
+  LET nextTail == (tail + 1) % BUFFER_SIZE IN
   /\ buffer' = [buffer EXCEPT ![tail] = x]
   /\ head' = head
   /\ tail' = nextTail
@@ -53,7 +50,7 @@ Push(x) ==
 \* POP: Only allowed when count > 0.
 Pop ==
   Pop::
-  LET nextHead == NextIdx(head) IN
+  LET nextHead == (head + 1) % BUFFER_SIZE IN
   /\ count > 0
   /\ UNCHANGED buffer
   /\ head' = nextHead
