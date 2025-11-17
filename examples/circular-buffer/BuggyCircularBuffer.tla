@@ -14,8 +14,7 @@ CONSTANTS
     \* @type: Set(Int);
     BUFFER_ELEMS
 
-
-ASSUME BUFFER_SIZE \in Nat \ {0}
+ASSUME BUFFER_SIZE > 0
 
 VARIABLES
     \* The integer buffer of size BUFFER_SIZE.
@@ -30,8 +29,6 @@ VARIABLES
     \* Number of elements currently stored.
     \* @type: Int;
     count
-
-vars == << buffer, head, tail, count >>
 
 \* Compute the next index in a circular manner.
 NextIdx(i) == (i + 1) % BUFFER_SIZE
