@@ -37,19 +37,18 @@ Init ==
   /\ tail = 0
   /\ count = 0
 
-\* Buggy PUSH: Advance tail, increment count, but no fullness check!
-\* @type: Int => Bool;
-Push(x) ==
-  Push::
+\* Buggy PUT: Advance tail, increment count, but no fullness check!
+Put(x) ==
+  Put::
   LET nextTail == (tail + 1) % BUFFER_SIZE IN
   /\ buffer' = [buffer EXCEPT ![tail] = x]
   /\ head' = head
   /\ tail' = nextTail
   /\ count' = count + 1
 
-\* POP: Only allowed when count > 0.
-Pop ==
-  Pop::
+\* GET: Only allowed when count > 0.
+Get ==
+  Get::
   LET nextHead == (head + 1) % BUFFER_SIZE IN
   /\ count > 0
   /\ UNCHANGED buffer
@@ -57,11 +56,13 @@ Pop ==
   /\ tail' = tail
   /\ count' = count - 1
 
-\* Either PUSH or POP may happen in any step.
+\* Either Put or Get may happen in any step.
 Next ==
     \/ \E x \in BUFFER_ELEMS:
-        Push(x)
-    \/ Pop
+        Put(x)
+    \/ Get
+
+vars == <<buffer, head, tail, count>>
 
 \* Complete specification
 Spec == Init /\ [][Next]_vars
