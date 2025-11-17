@@ -14,17 +14,18 @@ from typing import Optional
 
 import requests
 
+
 class ApalacheServer:
     """Manages the Apalache server process."""
 
-    def __init__(self, log_dir: str, hostname: str, port: int = 8822):
+    def __init__(self, log_dir: str, hostname: str, port: int = 8822) -> None:
         self.hostname = hostname
         self.port = port
-        self.server_process = None
+        self.server_process: Optional[subprocess.Popen[str]] = None
         self.log_dir = Path(log_dir)
         self.log = logging.getLogger(__name__)
-        self.stdout_file = None
-        self.stderr_file = None
+        self.stdout_file: Optional[str] = None
+        self.stderr_file: Optional[str] = None
 
     def start_server(self) -> bool:
         """Start the Apalache server in explorer mode."""
@@ -34,7 +35,10 @@ class ApalacheServer:
             return True
 
         if self.hostname != "localhost":
-            self.log.error(f"Apalache server is not running on {self.hostname}, and it's not localhost")
+            self.log.error(
+                f"Apalache server is not running on {self.hostname}, "
+                "and it's not localhost"
+            )
             return False
 
         self.log.info("Starting Apalache server in explorer mode...")
@@ -60,25 +64,41 @@ class ApalacheServer:
         self.log.info(f"Redirecting Apalache stderr to: {self.stderr_file}")
 
         try:
-            with open(self.stdout_file, 'w') as stdout_f, open(self.stderr_file, 'w') as stderr_f:
-                if os.name == 'posix':
+            with (
+                open(self.stdout_file, "w") as stdout_f,
+                open(self.stderr_file, "w") as stderr_f,
+            ):
+                if os.name == "posix":
                     self.server_process = subprocess.Popen(
                         cmd,
                         stdout=stdout_f,
                         stderr=stderr_f,
                         stdin=subprocess.DEVNULL,
                         preexec_fn=os.setsid,
-                        text=True
+                        text=True,
                     )
                 else:
-                    self.server_process = subprocess.Popen(
-                        cmd,
-                        stdout=stdout_f,
-                        stderr=stderr_f,
-                        stdin=subprocess.DEVNULL,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-                        text=True
-                    )
+                    # CREATE_NEW_PROCESS_GROUP is only available on Windows
+                    import sys
+
+                    if sys.platform == "win32":
+                        self.server_process = subprocess.Popen(
+                            cmd,
+                            stdout=stdout_f,
+                            stderr=stderr_f,
+                            stdin=subprocess.DEVNULL,
+                            # type: ignore[attr-defined]
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+                            text=True,
+                        )
+                    else:
+                        self.server_process = subprocess.Popen(
+                            cmd,
+                            stdout=stdout_f,
+                            stderr=stderr_f,
+                            stdin=subprocess.DEVNULL,
+                            text=True,
+                        )
 
             stderr_f.close()
             stdout_f.close()
@@ -87,9 +107,16 @@ class ApalacheServer:
             max_retries = 30
             for i in range(max_retries):
                 try:
-                    response = requests.get(f"http://localhost:{self.port}/rpc", timeout=1)
-                    if response.status_code in [200, 405]:  # 405 is expected for GET on JSON-RPC endpoint
-                        self.log.info(f"Server started successfully on port {self.port}")
+                    response = requests.get(
+                        f"http://localhost:{self.port}/rpc", timeout=1
+                    )
+                    if response.status_code in [
+                        200,
+                        405,
+                    ]:  # 405 is expected for GET on JSON-RPC endpoint
+                        self.log.info(
+                            f"Server started successfully on port {self.port}"
+                        )
                         return True
                 except requests.exceptions.RequestException:
                     pass
@@ -98,24 +125,38 @@ class ApalacheServer:
                 if self.server_process.poll() is not None:
                     # Process has terminated
                     self.server_process.wait()  # Clean up the process
-                    self.log.info(f"Server process terminated unexpectedly!")
+                    self.log.info("Server process terminated unexpectedly!")
                     self.log.info(f"Exit code: {self.server_process.returncode}")
-                    self.log.info(f"Check logs in {self.stdout_file} and {self.stderr_file} for details")
+                    self.log.info(
+                        f"Check logs in {self.stdout_file} and "
+                        f"{self.stderr_file} for details"
+                    )
                     return False
 
                 time.sleep(1)
                 if i % 5 == 0:  # Print progress every 5 seconds
-                    self.log.info(f"Waiting for server to start... ({i+1}/{max_retries})")
+                    self.log.info(
+                        f"Waiting for server to start... ({i+1}/{max_retries})"
+                    )
 
             # Check process output before giving up
             if self.server_process.poll() is not None:
                 self.server_process.wait()  # Clean up the process
-                self.log.info(f"Server process terminated during startup!")
+                self.log.info("Server process terminated during startup!")
                 self.log.info(f"Exit code: {self.server_process.returncode}")
-                self.log.info(f"Check logs in {self.stdout_file} and {self.stderr_file} for details")
+                self.log.info(
+                    f"Check logs in {self.stdout_file} and "
+                    f"{self.stderr_file} for details"
+                )
             else:
-                self.log.info("Server process is still running but not responding to HTTP requests")
-                self.log.info(f"Check logs in {self.stdout_file} and {self.stderr_file} for details")
+                self.log.info(
+                    "Server process is still running but not responding "
+                    "to HTTP requests"
+                )
+                self.log.info(
+                    f"Check logs in {self.stdout_file} and "
+                    f"{self.stderr_file} for details"
+                )
 
             self.log.error("Error: Server failed to start within timeout")
             return False
@@ -124,22 +165,28 @@ class ApalacheServer:
             self.log.error(f"Error starting server: {e}")
             return False
 
-    def stop_server(self):
+    def stop_server(self) -> bool:
         """Stop the Apalache server."""
 
         if not self.server_process:
-            self.log.warning("Server is running but not managed by this instance - cannot stop it")
+            self.log.warning(
+                "Server is running but not managed by this instance - cannot stop it"
+            )
         else:
             self.log.info("Stopping Apalache server...")
             self.server_process.terminate()
             try:
                 self.server_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                self.log.warning("Server process did not terminate gracefully, killing it...")
+                self.log.warning(
+                    "Server process did not terminate gracefully, killing it..."
+                )
                 self.server_process.kill()
                 self.server_process.wait()
             self.server_process = None
             self.log.info("Apalache server stopped successfully")
+
+        return True
 
     def _find_apalache_executable(self) -> Optional[str]:
         """Find the apalache-mc executable, either in PATH or in APALACHE_HOME/bin."""
@@ -161,7 +208,12 @@ class ApalacheServer:
     def _is_server_running(self) -> bool:
         """Check if the Apalache server is running on the specified port."""
         try:
-            response = requests.get(f"http://{self.hostname}:{self.port}/rpc", timeout=5)
-            return response.status_code in [200, 405]  # 405 is expected for GET on JSON-RPC endpoint
+            response = requests.get(
+                f"http://{self.hostname}:{self.port}/rpc", timeout=5
+            )
+            return response.status_code in [
+                200,
+                405,
+            ]  # 405 is expected for GET on JSON-RPC endpoint
         except requests.exceptions.RequestException:
             return False
