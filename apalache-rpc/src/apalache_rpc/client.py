@@ -22,18 +22,41 @@ from urllib3.util.retry import Retry
 
 @dataclass
 class TransitionDisabled:
+    """A value of this class represents a disabled transition.
+
+    Attributes:
+        trans_id: The transition identifier
+        snapshot_id: The snapshot identifier before assuming the transition
+    """
+
     trans_id: int
     snapshot_id: int
 
 
 @dataclass
 class TransitionEnabled:
+    """A value of this class represents an enabled transition.
+
+    Attributes:
+        trans_id: The transition identifier
+        snapshot_id: The snapshot identifier after assuming the transition
+    """
+
     trans_id: int
     snapshot_id: int
 
 
 @dataclass
 class TransitionUnknown:
+    """A value of this class represents a transition with unknown status.
+
+    The status may be unknown due to solver timeout or other issues.
+
+    Attributes:
+        trans_id: The transition identifier
+        snapshot_id: The snapshot identifier after assuming the transition
+    """
+
     trans_id: int
     snapshot_id: int
 
@@ -43,16 +66,36 @@ EnabledStatus = Union[TransitionEnabled, TransitionDisabled, TransitionUnknown]
 
 @dataclass
 class AssumptionDisabled:
+    """A value of this class represents a disabled state assumption.
+
+    Attributes:
+        snapshot_id: The snapshot identifier before the assumption
+    """
+
     snapshot_id: int
 
 
 @dataclass
 class AssumptionEnabled:
+    """A value of this class represents an enabled state assumption.
+
+    Attributes:
+        snapshot_id: The snapshot identifier after the assumption
+    """
+
     snapshot_id: int
 
 
 @dataclass
 class AssumptionUnknown:
+    """A value of this class represents a state assumption with unknown status.
+
+    The status may be unknown due to solver timeout or other issues.
+
+    Attributes:
+        snapshot_id: The snapshot identifier after the assumption
+    """
+
     snapshot_id: int
 
 
@@ -61,17 +104,35 @@ AssumptionStatus = Union[AssumptionEnabled, AssumptionDisabled, AssumptionUnknow
 
 @dataclass
 class InvariantSatisfied:
+    """Represents that all checked invariants are satisfied."""
+
     pass
 
 
 @dataclass
 class InvariantViolated:
+    """Represents a violated invariant with counterexample trace.
+       The counterexample trace is a Python representation of the JSON ITF format.
+
+    Attributes:
+        invariant_id: The identifier of the violated invariant
+        trace: The counterexample trace showing how the invariant was violated
+    """
+
     invariant_id: int
     trace: List[Dict[str, Any]]
 
 
 @dataclass
 class InvariantUnknown:
+    """Represents an invariant check with unknown result.
+
+    The result may be unknown due to solver timeout or other issues.
+
+    Attributes:
+        invariant_id: The identifier of the invariant
+    """
+
     invariant_id: int
 
 
@@ -80,16 +141,25 @@ InvariantStatus = Union[InvariantSatisfied, InvariantViolated, InvariantUnknown]
 
 @dataclass
 class NextModelTrue:
+    """Represents that the next model computation returned True."""
+
     pass
 
 
 @dataclass
 class NextModelFalse:
+    """Represents that the next model computation returned False."""
+
     pass
 
 
 @dataclass
 class NextModelUnknown:
+    """Represents that the next model computation result is unknown.
+
+    The result may be unknown due to solver timeout or other issues.
+    """
+
     pass
 
 
