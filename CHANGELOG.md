@@ -1,3 +1,10 @@
+# [0.3.0] - 2026-03-16
+
+## Changed
+
+ - Support Python 3.11+ and depend on `itf-py` 0.5.0.
+ - Expand the README with a worked JSON-RPC example for `examples/circular-buffer/MC10u8_BuggyCircularBuffer.tla`.
+
 # [0.1.0] - 2025-11-12
 
 ## Added

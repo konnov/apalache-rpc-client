@@ -208,3 +208,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+/apalache-rpc-client/_logs
+/apalache-rpc-client/_logs_doc_probe

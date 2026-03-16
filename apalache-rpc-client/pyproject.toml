@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "apalache-rpc-client"
-version = "0.2.0"
+version = "0.3.0"
 description = "Minimalistic Python client for interaction with the Apalache model checker over JSON RPC"
 homepage = "https://github.com/konnov/apalache-rpc-client"
 authors = ["Igor Konnov <igor@konnov.phd>"]
@@ -9,9 +9,9 @@ keywords = ["tlaplus", "apalache", "quint", "rpc", "testing"]
 packages = [{include = "apalache_rpc", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.11"
 requests = "^2.31.0"
-itf-py = "^0.4.2"
+itf-py = "^0.5.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -29,7 +29,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88
-target-version = ['py312']
+target-version = ['py311']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -52,7 +52,7 @@ line_length = 88
 known_first_party = ["itf_py"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

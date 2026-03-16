@@ -18,4 +18,8 @@ needs.
 **Server API**. Refer to the [Apalache JSON-RPC API][] for the interaction
 details.
 
+For an end-to-end JSON-RPC example that loads and explores
+`examples/circular-buffer/MC10u8_BuggyCircularBuffer.tla`, see the repository
+README at the project root.
+
 [apalache-rpc-client]: https://github.com/konnov/apalache-rpc-client
