@@ -65,7 +65,10 @@ def test_sequence_executes_one_apply_in_order_request():
                         {
                             "ok": True,
                             "method": "query",
-                            "result": {"operatorValue": {"#bigint": "1"}, "trace": None},
+                            "result": {
+                                "operatorValue": {"#bigint": "1"},
+                                "trace": None,
+                            },
                         },
                     ]
                 },
@@ -94,8 +97,8 @@ def test_sequence_marks_unexecuted_steps_after_failure():
         {
             "jsonrpc": "2.0",
             "id": kwargs["json"]["id"],
-                "result": {
-                    "calls": [
+            "result": {
+                "calls": [
                     {
                         "ok": False,
                         "method": "assumeTransition",
@@ -126,8 +129,8 @@ def test_sequence_check_invariants_aggregates_results():
         {
             "jsonrpc": "2.0",
             "id": kwargs["json"]["id"],
-                "result": {
-                    "calls": [
+            "result": {
+                "calls": [
                     {
                         "ok": True,
                         "method": "checkInvariant",

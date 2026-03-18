@@ -13,7 +13,17 @@ import base64
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -199,7 +209,11 @@ class StepHandle(Generic[T]):
             )
         if self._has_result:
             return self._result  # type: ignore[return-value]
-        value = self._aggregate() if self._aggregate is not None else self._resolver(self._raw_result)
+        value = (
+            self._aggregate()
+            if self._aggregate is not None
+            else self._resolver(self._raw_result)
+        )
         self._result = value
         self._has_result = True
         return value
@@ -339,7 +353,9 @@ class OrderedSequenceBuilder:
             lambda response: None,
         )
 
-    def check_invariants(self, nstate: int, naction: int) -> StepHandle[InvariantStatus]:
+    def check_invariants(
+        self, nstate: int, naction: int
+    ) -> StepHandle[InvariantStatus]:
         child_handles: List[StepHandle[InvariantStatus]] = []
         for kind, inv_id in [("STATE", i) for i in range(nstate)] + [
             ("ACTION", i) for i in range(naction)
@@ -537,7 +553,9 @@ class JsonRpcClient:
     def _decode_next_step(self, response: Dict[str, Any]) -> int:
         return int(response["snapshotId"])
 
-    def _decode_query(self, kinds: List[str], response: Dict[str, Any]) -> Dict[str, Any]:
+    def _decode_query(
+        self, kinds: List[str], response: Dict[str, Any]
+    ) -> Dict[str, Any]:
         result: Dict[str, Any] = {}
         if "OPERATOR" in kinds:
             result["operatorValue"] = response["operatorValue"]
@@ -744,8 +762,7 @@ class JsonRpcClient:
             {
                 "sessionId": self.session_id,
                 "calls": [
-                    {"method": step.method, "params": step.params}
-                    for step in steps
+                    {"method": step.method, "params": step.params} for step in steps
                 ],
             },
         )
