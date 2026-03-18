@@ -22,4 +22,18 @@ For an end-to-end JSON-RPC example that loads and explores
 `examples/circular-buffer/MC10u8_BuggyCircularBuffer.tla`, see the repository
 README at the project root.
 
+For ordered multi-step exploration in one round trip, use the sequence builder:
+
+```python
+with client.sequence() as seq:
+    init = seq.assume_transition(0)
+    step = seq.next_step()
+    view = seq.query(["OPERATOR", "TRACE"], operator="View")
+
+assert init.result.snapshot_id >= 0
+assert step.result >= 0
+assert "operatorValue" in view.result
+assert "trace" in view.result
+```
+
 [apalache-rpc-client]: https://github.com/konnov/apalache-rpc-client

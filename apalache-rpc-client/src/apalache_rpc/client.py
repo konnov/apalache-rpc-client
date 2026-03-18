@@ -13,7 +13,7 @@ import base64
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, TypeVar, Union
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -22,12 +22,7 @@ from urllib3.util.retry import Retry
 
 @dataclass
 class TransitionDisabled:
-    """A value of this class represents a disabled transition.
-
-    Attributes:
-        trans_id: The transition identifier
-        snapshot_id: The snapshot identifier before assuming the transition
-    """
+    """A value of this class represents a disabled transition."""
 
     trans_id: int
     snapshot_id: int
@@ -35,12 +30,7 @@ class TransitionDisabled:
 
 @dataclass
 class TransitionEnabled:
-    """A value of this class represents an enabled transition.
-
-    Attributes:
-        trans_id: The transition identifier
-        snapshot_id: The snapshot identifier after assuming the transition
-    """
+    """A value of this class represents an enabled transition."""
 
     trans_id: int
     snapshot_id: int
@@ -48,14 +38,7 @@ class TransitionEnabled:
 
 @dataclass
 class TransitionUnknown:
-    """A value of this class represents a transition with unknown status.
-
-    The status may be unknown due to solver timeout or other issues.
-
-    Attributes:
-        trans_id: The transition identifier
-        snapshot_id: The snapshot identifier after assuming the transition
-    """
+    """A value of this class represents a transition with unknown status."""
 
     trans_id: int
     snapshot_id: int
@@ -66,35 +49,21 @@ EnabledStatus = Union[TransitionEnabled, TransitionDisabled, TransitionUnknown]
 
 @dataclass
 class AssumptionDisabled:
-    """A value of this class represents a disabled state assumption.
-
-    Attributes:
-        snapshot_id: The snapshot identifier before the assumption
-    """
+    """A value of this class represents a disabled state assumption."""
 
     snapshot_id: int
 
 
 @dataclass
 class AssumptionEnabled:
-    """A value of this class represents an enabled state assumption.
-
-    Attributes:
-        snapshot_id: The snapshot identifier after the assumption
-    """
+    """A value of this class represents an enabled state assumption."""
 
     snapshot_id: int
 
 
 @dataclass
 class AssumptionUnknown:
-    """A value of this class represents a state assumption with unknown status.
-
-    The status may be unknown due to solver timeout or other issues.
-
-    Attributes:
-        snapshot_id: The snapshot identifier after the assumption
-    """
+    """A value of this class represents a state assumption with unknown status."""
 
     snapshot_id: int
 
@@ -111,13 +80,7 @@ class InvariantSatisfied:
 
 @dataclass
 class InvariantViolated:
-    """Represents a violated invariant with counterexample trace.
-       The counterexample trace is a Python representation of the JSON ITF format.
-
-    Attributes:
-        invariant_id: The identifier of the violated invariant
-        trace: The counterexample trace showing how the invariant was violated
-    """
+    """Represents a violated invariant with counterexample trace."""
 
     invariant_id: int
     trace: List[Dict[str, Any]]
@@ -125,13 +88,7 @@ class InvariantViolated:
 
 @dataclass
 class InvariantUnknown:
-    """Represents an invariant check with unknown result.
-
-    The result may be unknown due to solver timeout or other issues.
-
-    Attributes:
-        invariant_id: The identifier of the invariant
-    """
+    """Represents an invariant check with unknown result."""
 
     invariant_id: int
 
@@ -155,15 +112,13 @@ class NextModelFalse:
 
 @dataclass
 class NextModelUnknown:
-    """Represents that the next model computation result is unknown.
-
-    The result may be unknown due to solver timeout or other issues.
-    """
+    """Represents that the next model computation result is unknown."""
 
     pass
 
 
 NextModelStatus = Union[NextModelTrue, NextModelFalse, NextModelUnknown]
+T = TypeVar("T")
 
 
 class JsonRpcError(Exception):
@@ -176,95 +131,336 @@ class JsonRpcError(Exception):
         super().__init__(f"JSON-RPC Error {code}: {message}")
 
 
+class SequenceExecutionError(Exception):
+    """Raised when a sequence cannot produce a valid result."""
+
+
+@dataclass
+class SequenceStepError:
+    """Structured step error returned by applyInOrder."""
+
+    code: int
+    message: str
+    data: Any = None
+
+
+@dataclass
+class ScheduledStep:
+    """A low-level step submitted to applyInOrder."""
+
+    method: str
+    params: Dict[str, Any]
+
+
+class StepHandle(Generic[T]):
+    """Handle to a scheduled step inside an ordered sequence."""
+
+    def __init__(
+        self,
+        index: int,
+        method: str,
+        resolver: Callable[[Any], T],
+        aggregate: Optional[Callable[[], T]] = None,
+    ):
+        self.index = index
+        self.method = method
+        self._resolver = resolver
+        self._aggregate = aggregate
+        self._done = False
+        self._executed = False
+        self._error: Optional[SequenceStepError] = None
+        self._raw_result: Any = None
+        self._result: Optional[T] = None
+        self._has_result = False
+
+    @property
+    def done(self) -> bool:
+        return self._done
+
+    @property
+    def executed(self) -> bool:
+        return self._executed
+
+    @property
+    def error(self) -> Optional[SequenceStepError]:
+        return self._error
+
+    @property
+    def result(self) -> T:
+        if not self._done:
+            raise SequenceExecutionError(
+                f"Step {self.index} ({self.method}) has not been executed yet"
+            )
+        if self._error is not None:
+            raise JsonRpcError(self._error.code, self._error.message, self._error.data)
+        if not self._executed:
+            raise SequenceExecutionError(
+                f"Step {self.index} ({self.method}) was not executed"
+            )
+        if self._has_result:
+            return self._result  # type: ignore[return-value]
+        value = self._aggregate() if self._aggregate is not None else self._resolver(self._raw_result)
+        self._result = value
+        self._has_result = True
+        return value
+
+    def _set_raw_result(self, raw_result: Any) -> None:
+        self._raw_result = raw_result
+        self._done = True
+        self._executed = True
+
+    def _set_error(self, error: SequenceStepError) -> None:
+        self._error = error
+        self._done = True
+        self._executed = True
+
+    def _set_not_executed(self) -> None:
+        self._done = True
+        self._executed = False
+
+    def _mark_aggregate_ready(self) -> None:
+        self._done = True
+        self._executed = True
+
+
+class OrderedSequenceBuilder:
+    """Collects exploration steps and executes them with applyInOrder."""
+
+    def __init__(self, client: "JsonRpcClient", strict: bool = False):
+        self._client = client
+        self._strict = strict
+        self._executed = False
+        self._steps: List[ScheduledStep] = []
+        self._step_handles: List[StepHandle[Any]] = []
+        self._aggregate_handles: List[StepHandle[Any]] = []
+        self._public_handles: List[StepHandle[Any]] = []
+
+    def __enter__(self) -> "OrderedSequenceBuilder":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if exc_type is None:
+            self.execute()
+
+    def _ensure_not_executed(self) -> None:
+        if self._executed:
+            raise SequenceExecutionError("This sequence has already been executed")
+
+    def _schedule(
+        self, method: str, params: Dict[str, Any], resolver: Callable[[Any], T]
+    ) -> StepHandle[T]:
+        self._ensure_not_executed()
+        handle: StepHandle[T] = StepHandle(len(self._public_handles), method, resolver)
+        self._steps.append(ScheduledStep(method=method, params=params))
+        self._step_handles.append(handle)
+        self._public_handles.append(handle)
+        return handle
+
+    def _schedule_aggregate(
+        self, method: str, aggregate: Callable[[], T]
+    ) -> StepHandle[T]:
+        handle: StepHandle[T] = StepHandle(
+            len(self._public_handles),
+            method,
+            lambda _: None,  # type: ignore[arg-type]
+            aggregate=aggregate,
+        )
+        self._aggregate_handles.append(handle)
+        self._public_handles.append(handle)
+        return handle
+
+    def assume_transition(
+        self, transition_id: int, check_enabled: bool = True
+    ) -> StepHandle[EnabledStatus]:
+        return self._schedule(
+            "assumeTransition",
+            {
+                "sessionId": self._client.session_id,
+                "transitionId": transition_id,
+                "checkEnabled": check_enabled,
+                "timeoutSec": self._client.solver_timeout,
+            },
+            lambda response: self._client._decode_assume_transition(
+                transition_id, check_enabled, response
+            ),
+        )
+
+    def assume_state(
+        self, equalities: Dict[str, Any], check_enabled: bool = True
+    ) -> StepHandle[AssumptionStatus]:
+        return self._schedule(
+            "assumeState",
+            {
+                "sessionId": self._client.session_id,
+                "equalities": equalities,
+                "checkEnabled": check_enabled,
+                "timeoutSec": self._client.solver_timeout,
+            },
+            lambda response: self._client._decode_assume_state(check_enabled, response),
+        )
+
+    def next_step(self) -> StepHandle[int]:
+        return self._schedule(
+            "nextStep",
+            {"sessionId": self._client.session_id},
+            self._client._decode_next_step,
+        )
+
+    def query(self, kinds: List[str], **kwargs: Any) -> StepHandle[Dict[str, Any]]:
+        return self._schedule(
+            "query",
+            {
+                **kwargs,
+                "sessionId": self._client.session_id,
+                "timeoutSec": self._client.solver_timeout,
+                "kinds": kinds,
+            },
+            lambda response: self._client._decode_query(kinds, response),
+        )
+
+    def next_model(self, operator: str) -> StepHandle[Dict[str, Any]]:
+        return self._schedule(
+            "nextModel",
+            {
+                "sessionId": self._client.session_id,
+                "timeoutSec": self._client.solver_timeout,
+                "operator": operator,
+            },
+            self._client._decode_next_model,
+        )
+
+    def rollback(self, snapshot_id: int) -> StepHandle[None]:
+        return self._schedule(
+            "rollback",
+            {
+                "sessionId": self._client.session_id,
+                "snapshotId": snapshot_id,
+            },
+            lambda response: None,
+        )
+
+    def check_invariants(self, nstate: int, naction: int) -> StepHandle[InvariantStatus]:
+        child_handles: List[StepHandle[InvariantStatus]] = []
+        for kind, inv_id in [("STATE", i) for i in range(nstate)] + [
+            ("ACTION", i) for i in range(naction)
+        ]:
+            child_handles.append(
+                self._schedule(
+                    "checkInvariant",
+                    {
+                        "sessionId": self._client.session_id,
+                        "invariantId": inv_id,
+                        "kind": kind,
+                        "timeoutSec": self._client.solver_timeout,
+                    },
+                    lambda response, inv_id=inv_id: self._client._decode_check_invariant(
+                        inv_id, response
+                    ),
+                )
+            )
+
+        def aggregate() -> InvariantStatus:
+            for handle in child_handles:
+                result = handle.result
+                if isinstance(result, InvariantViolated):
+                    return result
+                if isinstance(result, InvariantUnknown):
+                    return result
+            return InvariantSatisfied()
+
+        return self._schedule_aggregate("checkInvariants", aggregate)
+
+    def execute(self) -> "OrderedSequenceBuilder":
+        self._ensure_not_executed()
+        self._executed = True
+        step_results = self._client.apply_in_order_raw(self._steps)
+
+        for handle, step_result in zip(self._step_handles, step_results):
+            if step_result.get("ok", False):
+                handle._set_raw_result(step_result.get("result"))
+            else:
+                error = step_result.get("error", {})
+                handle._set_error(
+                    SequenceStepError(
+                        error.get("code", -4),
+                        error.get("message", "Unknown applyInOrder call error"),
+                        error.get("data"),
+                    )
+                )
+                break
+
+        for handle in self._step_handles[len(step_results) :]:
+            handle._set_not_executed()
+
+        for handle in self._aggregate_handles:
+            handle._mark_aggregate_ready()
+
+        if self._strict:
+            for handle in self._step_handles:
+                if handle.error is not None:
+                    _ = handle.result
+        return self
+
+    def results(self) -> Iterator[StepHandle[Any]]:
+        if not self._executed:
+            raise SequenceExecutionError("The sequence has not been executed yet")
+        return iter(self._public_handles)
+
+
 class JsonRpcClient:
     """Client for JSON-RPC communication with Apalache server."""
 
     def __init__(
         self, hostname: str = "localhost", port: int = 8822, solver_timeout: int = 600
     ):
-        """Initialize the JSON-RPC client.
-
-        Args:
-            hostname: Hostname of the JSON-RPC server (default: "localhost")
-            port: Port of the JSON-RPC server (default: 8822)
-            solver_timeout: Timeout for solver operations in seconds (default: 600)
-        """
         self.rpc_url = f"http://{hostname}:{port}/rpc"
         self.port = port
-        self.conn_timeout = 10.0  # seconds
-        self.solver_timeout = solver_timeout  # seconds
+        self.conn_timeout = 10.0
+        self.solver_timeout = solver_timeout
         self.session_id: Optional[str] = None
         self._request_id = 0
         self.log = logging.getLogger(__name__)
-
-        # Create a persistent session for connection reuse
         self._session = requests.Session()
-
-        # Set keep-alive headers
         self._session.headers.update(
             {"Connection": "keep-alive", "Content-Type": "application/json"}
         )
 
-        # Configure connection pooling with retry strategy
         retry_strategy = Retry(
-            total=3,  # Total number of retries
-            backoff_factor=0.1,  # Backoff factor between retries
-            status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
-            allowed_methods=["POST"],  # Only retry POST requests
+            total=3,
+            backoff_factor=0.1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST"],
         )
-
         adapter = HTTPAdapter(
-            pool_connections=1,  # Number of connection pools
-            pool_maxsize=10,  # Number of connections to save in the pool
-            max_retries=retry_strategy,  # Retry strategy
+            pool_connections=1,
+            pool_maxsize=10,
+            max_retries=retry_strategy,
         )
         self._session.mount("http://", adapter)
         self._session.mount("https://", adapter)
 
     def _info(self, msg: str) -> None:
-        """Log an info message.
-
-        Args:
-            msg: The message to log
-        """
         self.log.info(msg)
 
     def _error(self, msg: str) -> None:
-        """Log an error message.
-
-        Args:
-            msg: The error message to log
-        """
         self.log.error(msg)
 
     def _next_request_id(self) -> int:
-        """Generate next request ID.
-
-        Returns:
-            The next sequential request ID
-        """
         self._request_id += 1
         return self._request_id
+
+    def _rpc_payload(self, method: str, params: Any = None) -> Dict[str, Any]:
+        return {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params or {},
+            "id": self._next_request_id(),
+        }
 
     def _rpc_call(
         self, method: str, params: Any = None, timeout: Optional[int] = None
     ) -> Any:
-        """Execute a JSON-RPC call to the server.
-
-        Args:
-            method: The RPC method name to call
-            params: Optional parameters for the RPC method
-            timeout: Optional timeout in seconds (auto-determined if not provided)
-
-        Returns:
-            The result from the RPC call
-
-        Raises:
-            JsonRpcError: If the RPC call fails or times out
-        """
-        # Use solver timeout for long-running operations, connection timeout for others
         if timeout is None:
-            # Long-running operations that might need more time
             long_running_methods = {
                 "loadSpec",
                 "assumeTransition",
@@ -273,20 +469,14 @@ class JsonRpcClient:
                 "nextStep",
                 "query",
                 "nextModel",
+                "applyInOrder",
             }
             if method in long_running_methods:
-                timeout = self.solver_timeout + 30  # Add buffer to solver timeout
+                timeout = self.solver_timeout + 30
             else:
-                timeout = max(
-                    60, int(self.conn_timeout * 6)
-                )  # Minimum 60s for other operations
+                timeout = max(60, int(self.conn_timeout * 6))
 
-        payload = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {},
-            "id": self._next_request_id(),
-        }
+        payload = self._rpc_payload(method, params)
 
         try:
             response = self._session.post(self.rpc_url, json=payload, timeout=timeout)
@@ -308,6 +498,67 @@ class JsonRpcClient:
             )
         return data.get("result")
 
+    def _decode_assume_transition(
+        self, transition_id: int, check_enabled: bool, response: Dict[str, Any]
+    ) -> EnabledStatus:
+        status = response["status"]
+        snapshot_id = response["snapshotId"]
+        if status == "ENABLED":
+            return TransitionEnabled(transition_id, snapshot_id)
+        if status == "DISABLED":
+            return TransitionDisabled(transition_id, snapshot_id)
+        if check_enabled:
+            return TransitionUnknown(transition_id, snapshot_id)
+        return TransitionEnabled(transition_id, snapshot_id)
+
+    def _decode_assume_state(
+        self, check_enabled: bool, response: Dict[str, Any]
+    ) -> AssumptionStatus:
+        status = response["status"]
+        snapshot_id = response["snapshotId"]
+        if status == "ENABLED":
+            return AssumptionEnabled(snapshot_id)
+        if status == "DISABLED":
+            return AssumptionDisabled(snapshot_id)
+        if check_enabled:
+            return AssumptionUnknown(snapshot_id)
+        return AssumptionEnabled(snapshot_id)
+
+    def _decode_check_invariant(
+        self, inv_id: int, response: Dict[str, Any]
+    ) -> InvariantStatus:
+        status = response["invariantStatus"]
+        if status == "VIOLATED":
+            return InvariantViolated(invariant_id=inv_id, trace=response["trace"])
+        if status == "UNKNOWN":
+            return InvariantUnknown(invariant_id=inv_id)
+        return InvariantSatisfied()
+
+    def _decode_next_step(self, response: Dict[str, Any]) -> int:
+        return int(response["snapshotId"])
+
+    def _decode_query(self, kinds: List[str], response: Dict[str, Any]) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        if "OPERATOR" in kinds:
+            result["operatorValue"] = response["operatorValue"]
+        if "TRACE" in kinds:
+            result["trace"] = response["trace"]
+        return result
+
+    def _decode_next_model(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        def to_status(status: str) -> NextModelStatus:
+            if status == "TRUE":
+                return NextModelTrue()
+            if status == "FALSE":
+                return NextModelFalse()
+            return NextModelUnknown()
+
+        return {
+            "oldValue": response["oldValue"],
+            "hasOld": to_status(response["hasOld"]),
+            "hasNext": to_status(response["hasNext"]),
+        }
+
     def load_spec(
         self,
         sources: List[str],
@@ -316,31 +567,9 @@ class JsonRpcClient:
         invariants: List[str],
         view: Optional[str],
     ) -> Any:
-        """Load a TLA+ specification into the Apalache server.
-
-        Args:
-            sources: List of file paths to TLA+ specification files
-            init: Name of the initialization predicate
-            next: Name of the next-state relation
-            invariants: List of invariant names to check
-            view: Optional view operator name for state projection
-
-        Returns:
-            Dictionary containing:
-                - init: List of initial transitions
-                - next: List of next transitions
-                - state: List of state invariants
-                - action: List of action invariants
-                - snapshot_id: The snapshot ID after loading
-            Returns None if loading fails
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
         self._info(f"Loading specification from: {', '. join(sources)}")
 
         sources_base64 = []
-        # Read the specification file
         for filename in sources:
             try:
                 with open(filename, "r", encoding="utf-8") as f:
@@ -351,7 +580,6 @@ class JsonRpcClient:
                 self._error(f"Error reading specification file: {e}")
                 return None
 
-        # Make the loadSpec RPC call
         params = {
             "sources": sources_base64,
             "init": init,
@@ -366,95 +594,63 @@ class JsonRpcClient:
             self.session_id = response["sessionId"]
             snapshot_id = response["snapshotId"]
             spec_params = response["specParameters"]
-            initTransitions = spec_params.get("initTransitions", [])
-            nextTransitions = spec_params.get("nextTransitions", [])
-            stateInvariants = spec_params.get("stateInvariants", [])
-            actionInvariants = spec_params.get("actionInvariants", [])
+            init_transitions = spec_params.get("initTransitions", [])
+            next_transitions = spec_params.get("nextTransitions", [])
+            state_invariants = spec_params.get("stateInvariants", [])
+            action_invariants = spec_params.get("actionInvariants", [])
 
             self._info("Specification loaded successfully!")
             self._info(f"Session ID: {self.session_id}")
-            self._info(f"Initial transitions: {len(initTransitions)}")
-            self._info(f"Next transitions: {len(nextTransitions)}")
-            self._info(f"State invariants: {len(stateInvariants)}")
-            self._info(f"Action invariants: {len(actionInvariants)}")
+            self._info(f"Initial transitions: {len(init_transitions)}")
+            self._info(f"Next transitions: {len(next_transitions)}")
+            self._info(f"State invariants: {len(state_invariants)}")
+            self._info(f"Action invariants: {len(action_invariants)}")
 
             return {
-                "init": initTransitions,
-                "next": nextTransitions,
-                "state": stateInvariants,
-                "action": actionInvariants,
+                "init": init_transitions,
+                "next": next_transitions,
+                "state": state_invariants,
+                "action": action_invariants,
                 "snapshot_id": snapshot_id,
             }
-
         except Exception as e:
             self._error(f"Error loading specification: {e}")
             return None
 
     def dispose_spec(self) -> None:
-        """Dispose of the current specification session.
-
-        Cleans up resources associated with the current session on the server.
-        Should be called when done working with a specification.
-        """
         if self.session_id:
-            params = {"sessionId": self.session_id}
             try:
-                self._rpc_call("disposeSpec", params)
+                self._rpc_call("disposeSpec", {"sessionId": self.session_id})
                 self._info("Specification session disposed")
             except Exception as e:
                 self._error(f"Error disposing specification: {e}")
 
     def check_invariants(self, nstate: int, naction: int) -> InvariantStatus:
-        """Check all invariants against the current state.
-
-        Iterates through all state and action invariants, checking each one
-        using the solver. Returns immediately if a violation is found.
-
-        Args:
-            nstate: Number of state invariants to check
-            naction: Number of action invariants to check
-
-        Returns:
-            InvariantSatisfied if all invariants hold,
-            InvariantViolated with counterexample if a violation is found,
-            InvariantUnknown if the solver times out or encounters an error
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        # Use a longer timeout for invariant checking if not specified
         request_timeout = self.solver_timeout + 60
 
         for kind, inv_id in [("STATE", i) for i in range(nstate)] + [
             ("ACTION", i) for i in range(naction)
         ]:
-            params = {
-                "sessionId": self.session_id,
-                "invariantId": inv_id,
-                "kind": kind,
-                "timeoutSec": self.solver_timeout,
-            }
-
             try:
                 response = self._rpc_call(
-                    "checkInvariant", params, timeout=request_timeout
+                    "checkInvariant",
+                    {
+                        "sessionId": self.session_id,
+                        "invariantId": inv_id,
+                        "kind": kind,
+                        "timeoutSec": self.solver_timeout,
+                    },
+                    timeout=request_timeout,
                 )
-                status = response["invariantStatus"]
-
-                if status == "VIOLATED":
+                result = self._decode_check_invariant(inv_id, response)
+                if isinstance(result, InvariantViolated):
                     self._info(f"Invariant ID {inv_id} is violated!")
-                    self._info("Counterexample:")
                     if response["trace"]:
                         self._info(json.dumps(response["trace"], indent=2))
-                    return InvariantViolated(
-                        invariant_id=inv_id, trace=response["trace"]
-                    )
-                elif status == "UNKNOWN":
-                    self._info(
-                        f"Invariant {inv_id}: UNKNOWN " "(timeout or solver issue)"
-                    )
-                    return InvariantUnknown(invariant_id=inv_id)
-
+                    return result
+                if isinstance(result, InvariantUnknown):
+                    self._info(f"Invariant {inv_id}: UNKNOWN (timeout or solver issue)")
+                    return result
             except Exception as e:
                 self._error(f"Error checking invariant {inv_id}: {e}")
                 return InvariantUnknown(invariant_id=inv_id)
@@ -462,235 +658,114 @@ class JsonRpcClient:
         return InvariantSatisfied()
 
     def rollback(self, snapshot_id: int) -> None:
-        """Roll back the exploration state to an earlier snapshot.
-
-        Args:
-            snapshot_id: The snapshot ID to roll back to
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {
-            "sessionId": self.session_id,
-            "snapshotId": snapshot_id,
-        }
-
-        self._rpc_call("rollback", params)
+        self._rpc_call(
+            "rollback",
+            {
+                "sessionId": self.session_id,
+                "snapshotId": snapshot_id,
+            },
+        )
 
     def assume_transition(
         self, transition_id: int, check_enabled: bool = True
     ) -> EnabledStatus:
-        """Assume a transition is taken and check if it's enabled.
-
-        Constrains the current exploration state by assuming the specified
-        transition is taken, and optionally checks if it's actually enabled.
-
-        Args:
-            transition_id: The ID of the transition to assume
-            check_enabled: Whether to check if the transition is enabled
-                (default: True)
-
-        Returns:
-            TransitionEnabled if the transition is enabled,
-            TransitionDisabled if the transition is disabled,
-            TransitionUnknown if the solver cannot determine the status
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {
-            "sessionId": self.session_id,
-            "transitionId": transition_id,
-            "checkEnabled": check_enabled,
-            "timeoutSec": self.solver_timeout,
-        }
-
-        response = self._rpc_call("assumeTransition", params)
-        status = response["status"]
-        snapshot_id = response["snapshotId"]
-
-        if status == "ENABLED":
+        response = self._rpc_call(
+            "assumeTransition",
+            {
+                "sessionId": self.session_id,
+                "transitionId": transition_id,
+                "checkEnabled": check_enabled,
+                "timeoutSec": self.solver_timeout,
+            },
+        )
+        result = self._decode_assume_transition(transition_id, check_enabled, response)
+        if isinstance(result, TransitionEnabled):
             self._info(f"Transition {transition_id}: ENABLED")
-            return TransitionEnabled(transition_id, snapshot_id)
-        elif status == "DISABLED":
+        elif isinstance(result, TransitionDisabled):
             self._info(f"Transition {transition_id}: DISABLED")
-            return TransitionDisabled(transition_id, snapshot_id)
-        else:  # UNKNOWN
-            if check_enabled:
-                self._error(f"Transition {transition_id}: UNKNOWN")
-                return TransitionUnknown(transition_id, snapshot_id)
-            else:
-                # assume it's enabled for exploration
-                return TransitionEnabled(transition_id, snapshot_id)
+        else:
+            self._error(f"Transition {transition_id}: UNKNOWN")
+        return result
 
     def assume_state(
         self, equalities: Dict[str, Any], check_enabled: bool = True
     ) -> AssumptionStatus:
-        """Assume state equalities hold and check if the assumption is satisfiable.
-
-        Constrains the current exploration state by assuming certain variables
-        are equal to specific values.
-
-        Args:
-            equalities: Dictionary mapping variable names to their assumed values
-            check_enabled: Whether to check if the assumption is satisfiable
-                (default: True)
-
-        Returns:
-            AssumptionEnabled if the assumption is satisfiable,
-            AssumptionDisabled if the assumption is unsatisfiable,
-            AssumptionUnknown if the solver cannot determine the status
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {
-            "sessionId": self.session_id,
-            "equalities": equalities,
-            "checkEnabled": check_enabled,
-            "timeoutSec": self.solver_timeout,
-        }
-
-        response = self._rpc_call("assumeState", params)
-        status = response["status"]
-        snapshot_id = response["snapshotId"]
-
-        if status == "ENABLED":
+        response = self._rpc_call(
+            "assumeState",
+            {
+                "sessionId": self.session_id,
+                "equalities": equalities,
+                "checkEnabled": check_enabled,
+                "timeoutSec": self.solver_timeout,
+            },
+        )
+        result = self._decode_assume_state(check_enabled, response)
+        if isinstance(result, AssumptionEnabled):
             self._info("AssumeState: ENABLED")
-            return AssumptionEnabled(snapshot_id)
-        elif status == "DISABLED":
+        elif isinstance(result, AssumptionDisabled):
             self._info("AssumeState: DISABLED")
-            return AssumptionDisabled(snapshot_id)
-        else:  # UNKNOWN
-            if check_enabled:
-                self._error("AssumeState: UNKNOWN")
-                return AssumptionUnknown(snapshot_id)
-            else:
-                # assume it's enabled for exploration
-                return AssumptionEnabled(snapshot_id)
-
-    def next_step(self) -> int:
-        """Move to the next step in the exploration.
-
-        Advances the exploration by one step, creating a new snapshot.
-
-        Returns:
-            The snapshot ID of the new step
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {"sessionId": self.session_id}
-
-        response = self._rpc_call("nextStep", params)
-        new_step = response["newStepNo"]
-
-        self._info(f"Moved to step {new_step}")
-        return int(response["snapshotId"])
-
-    def query(self, kinds: List[str], **kwargs: Any) -> Dict[str, Any]:
-        """Execute a query against the current exploration context.
-
-        Args:
-            kinds: List of query kinds (e.g., ["OPERATOR"] or ["TRACE"])
-            **kwargs: Additional query-specific parameters
-
-        Returns:
-            Dictionary containing query results based on the requested kinds
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {
-            **kwargs,
-            "sessionId": self.session_id,
-            "timeoutSec": self.solver_timeout,
-            "kinds": kinds,
-        }
-
-        response = self._rpc_call("query", params)
-        result = {}
-        if "OPERATOR" in kinds:
-            result["operatorValue"] = response["operatorValue"]
-        elif "TRACE" in kinds:
-            result["trace"] = response["trace"]
-
+        else:
+            self._error("AssumeState: UNKNOWN")
         return result
 
+    def next_step(self) -> int:
+        response = self._rpc_call("nextStep", {"sessionId": self.session_id})
+        self._info(f"Moved to step {response['newStepNo']}")
+        return self._decode_next_step(response)
+
+    def query(self, kinds: List[str], **kwargs: Any) -> Dict[str, Any]:
+        response = self._rpc_call(
+            "query",
+            {
+                **kwargs,
+                "sessionId": self.session_id,
+                "timeoutSec": self.solver_timeout,
+                "kinds": kinds,
+            },
+        )
+        return self._decode_query(kinds, response)
+
     def next_model(self, operator: str) -> Dict[str, Any]:
-        """Attempt to compute the next model for a given operator.
+        response = self._rpc_call(
+            "nextModel",
+            {
+                "sessionId": self.session_id,
+                "timeoutSec": self.solver_timeout,
+                "operator": operator,
+            },
+        )
+        return self._decode_next_model(response)
 
-        Args:
-            operator: The operator expression to evaluate for the next model
+    def apply_in_order_raw(self, steps: List[ScheduledStep]) -> List[Dict[str, Any]]:
+        if self.session_id is None:
+            raise SequenceExecutionError("No active session. Call load_spec() first.")
+        response = self._rpc_call(
+            "applyInOrder",
+            {
+                "sessionId": self.session_id,
+                "calls": [
+                    {"method": step.method, "params": step.params}
+                    for step in steps
+                ],
+            },
+        )
+        return response["calls"]
 
-        Returns:
-            Dictionary containing:
-                - oldValue: The old value of the operator
-                - hasOld: Status indicating if old value exists (NextModelStatus)
-                - hasNext: Status indicating if next value exists (NextModelStatus)
-
-        Raises:
-            JsonRpcError: If the RPC call fails
-        """
-        params = {
-            "sessionId": self.session_id,
-            "timeoutSec": self.solver_timeout,
-            "operator": operator,
-        }
-
-        response = self._rpc_call("nextModel", params)
-
-        def to_status(s: str) -> NextModelStatus:
-            if s == "TRUE":
-                return NextModelTrue()
-            elif s == "FALSE":
-                return NextModelFalse()
-            else:
-                return NextModelUnknown()
-
-        return {
-            "oldValue": response["oldValue"],
-            "hasOld": to_status(response["hasOld"]),
-            "hasNext": to_status(response["hasNext"]),
-        }
+    def sequence(self, strict: bool = False) -> OrderedSequenceBuilder:
+        if self.session_id is None:
+            raise SequenceExecutionError("No active session. Call load_spec() first.")
+        return OrderedSequenceBuilder(self, strict=strict)
 
     def set_solver_timeout(self, timeout: int) -> None:
-        """Update the solver timeout for long-running operations.
-
-        Args:
-            timeout: New solver timeout in seconds
-        """
         self.solver_timeout = timeout
         self._info(f"Solver timeout updated to {timeout} seconds")
 
     def close(self) -> None:
-        """Close the HTTP session and clean up resources.
-
-        Should be called when done with the client to properly release
-        network connections. Automatically called when using the client
-        as a context manager.
-        """
         if hasattr(self, "_session") and self._session:
             self._session.close()
 
     def __enter__(self) -> "JsonRpcClient":
-        """Enter the context manager.
-
-        Returns:
-            The client instance for use in the context
-
-        Example:
-            with JsonRpcClient() as client:
-                client.load_spec(...)
-        """
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Exit the context manager and clean up resources.
-
-        Args:
-            exc_type: Exception type if an exception occurred
-            exc_val: Exception value if an exception occurred
-            exc_tb: Exception traceback if an exception occurred
-        """
         self.close()
