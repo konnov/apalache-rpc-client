@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "apalache-rpc-client"
-version = "0.5.0"
+version = "0.5.1"
 description = "Minimalistic Python client for interaction with the Apalache model checker over JSON RPC"
 homepage = "https://github.com/konnov/apalache-rpc-client"
 authors = ["Igor Konnov <igor@konnov.phd>"]
