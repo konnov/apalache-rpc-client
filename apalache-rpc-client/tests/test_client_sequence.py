@@ -39,6 +39,34 @@ def test_query_returns_both_trace_and_operator_value():
     }
 
 
+def test_compact_returns_new_snapshot_id():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured["json"] = kwargs["json"]
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": kwargs["json"]["id"],
+                "result": {"sessionId": "session-1", "snapshotId": 7},
+            }
+        )
+
+    client._session.post = fake_post
+
+    result = client.compact(3)
+
+    assert captured["json"]["method"] == "compact"
+    assert captured["json"]["params"] == {
+        "sessionId": "session-1",
+        "snapshotId": 3,
+        "timeoutSec": client.solver_timeout,
+    }
+    assert result == 7
+
+
 def test_sequence_executes_one_apply_in_order_request():
     client = JsonRpcClient()
     client.session_id = "session-1"
@@ -88,6 +116,51 @@ def test_sequence_executes_one_apply_in_order_request():
     assert snapshot.result == 4
     assert view.result == {"operatorValue": {"#bigint": "1"}}
     assert list(seq.results()) == [transition, snapshot, view]
+
+
+def test_sequence_compact_decodes_snapshot_id():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured["json"] = kwargs["json"]
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": kwargs["json"]["id"],
+                "result": {
+                    "calls": [
+                        {
+                            "ok": True,
+                            "method": "compact",
+                            "result": {
+                                "sessionId": "session-1",
+                                "snapshotId": 9,
+                            },
+                        }
+                    ]
+                },
+            }
+        )
+
+    client._session.post = fake_post
+
+    with client.sequence() as seq:
+        compacted = seq.compact(3)
+
+    assert captured["json"]["method"] == "applyInOrder"
+    assert captured["json"]["params"]["calls"] == [
+        {
+            "method": "compact",
+            "params": {
+                "sessionId": "session-1",
+                "snapshotId": 3,
+                "timeoutSec": client.solver_timeout,
+            },
+        }
+    ]
+    assert compacted.result == 9
 
 
 def test_sequence_marks_unexecuted_steps_after_failure():

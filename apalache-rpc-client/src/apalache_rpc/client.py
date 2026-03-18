@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
-    cast,
     Dict,
     Generic,
     Iterator,
@@ -24,6 +23,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    cast,
 )
 
 import requests
@@ -355,6 +355,17 @@ class OrderedSequenceBuilder:
             lambda response: None,
         )
 
+    def compact(self, snapshot_id: int) -> StepHandle[int]:
+        return self._schedule(
+            "compact",
+            {
+                "sessionId": self._client.session_id,
+                "snapshotId": snapshot_id,
+                "timeoutSec": self._client.solver_timeout,
+            },
+            self._client._decode_compact,
+        )
+
     def check_invariants(
         self, nstate: int, naction: int
     ) -> StepHandle[InvariantStatus]:
@@ -491,6 +502,7 @@ class JsonRpcClient:
                 "nextStep",
                 "query",
                 "nextModel",
+                "compact",
                 "applyInOrder",
             }
             if method in long_running_methods:
@@ -557,6 +569,9 @@ class JsonRpcClient:
         return InvariantSatisfied()
 
     def _decode_next_step(self, response: Dict[str, Any]) -> int:
+        return int(response["snapshotId"])
+
+    def _decode_compact(self, response: Dict[str, Any]) -> int:
         return int(response["snapshotId"])
 
     def _decode_query(
@@ -759,6 +774,19 @@ class JsonRpcClient:
             },
         )
         return self._decode_next_model(response)
+
+    def compact(self, snapshot_id: int) -> int:
+        response = self._rpc_call(
+            "compact",
+            {
+                "sessionId": self.session_id,
+                "snapshotId": snapshot_id,
+                "timeoutSec": self.solver_timeout,
+            },
+        )
+        compacted_snapshot_id = self._decode_compact(response)
+        self._info(f"Compacted trace to snapshot {compacted_snapshot_id}")
+        return compacted_snapshot_id
 
     def apply_in_order_raw(self, steps: List[ScheduledStep]) -> List[Dict[str, Any]]:
         if self.session_id is None:
