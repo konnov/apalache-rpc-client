@@ -73,8 +73,8 @@ with TemporaryDirectory() as log_dir:
 
 This example loads [`examples/circular-buffer/MC10u8_BuggyCircularBuffer.tla`](./examples/circular-buffer/MC10u8_BuggyCircularBuffer.tla)
 and the imported base module, chooses an initial state, queries an exported
-operator, checks invariants, explores a `Put` transition, and rolls back to the
-initial snapshot.
+operator, checks invariants, explores a `Put` transition, compacts the current
+symbolic trace, and rolls back to the initial snapshot.
 
 <!-- name: test_circular_buffer_json_rpc -->
 ```python
@@ -143,9 +143,13 @@ with TemporaryDirectory() as log_dir:
             put_status = client.assume_transition(spec["next"][0]["index"])
             assert isinstance(put_status, TransitionEnabled)
 
+            # Call compact to collapse the current symbolic trace into one concrete state.
+            compacted_snapshot = client.compact(init_snapshot)
+            assert isinstance(compacted_snapshot, int)
+
             # Call nextModel to ask whether CountView can change in the next state.
             next_model = client.next_model("CountView")
-            assert next_model["oldValue"] == {"#tup": [{"#bigint": "0"}]}
+            assert next_model["oldValue"] == {"#tup": [{"#bigint": "1"}]}
             assert isinstance(next_model["hasOld"], NextModelTrue)
             assert isinstance(next_model["hasNext"], NextModelFalse)
 

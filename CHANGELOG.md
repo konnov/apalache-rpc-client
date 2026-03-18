@@ -1,3 +1,17 @@
+# [0.5.0] - 2026-03-18
+
+## Changed
+
+ - Add direct and ordered-sequence support for Apalache's `compact` JSON-RPC method.
+ - Document `compact` in the README and validate the client against the local Apalache checkout.
+
+# [0.4.0] - 2026-03-18
+
+## Changed
+
+ - Add and validate support for Apalache's ordered JSON-RPC method `applyInOrder`.
+ - Verify `apalache-rpc-client` against a local Apalache build newer than `v0.52.3`.
+
 # [0.3.0] - 2026-03-16
 
 ## Changed
