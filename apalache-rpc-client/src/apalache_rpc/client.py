@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
+    cast,
     Dict,
     Generic,
     Iterator,
@@ -273,10 +274,11 @@ class OrderedSequenceBuilder:
     def _schedule_aggregate(
         self, method: str, aggregate: Callable[[], T]
     ) -> StepHandle[T]:
+        resolver = cast(Callable[[Any], T], lambda _: None)
         handle: StepHandle[T] = StepHandle(
             len(self._public_handles),
             method,
-            lambda _: None,  # type: ignore[arg-type]
+            resolver,
             aggregate=aggregate,
         )
         self._aggregate_handles.append(handle)
@@ -360,6 +362,12 @@ class OrderedSequenceBuilder:
         for kind, inv_id in [("STATE", i) for i in range(nstate)] + [
             ("ACTION", i) for i in range(naction)
         ]:
+
+            def decode_check_invariant(
+                response: Any, inv_id: int = inv_id
+            ) -> InvariantStatus:
+                return self._client._decode_check_invariant(inv_id, response)
+
             child_handles.append(
                 self._schedule(
                     "checkInvariant",
@@ -369,9 +377,7 @@ class OrderedSequenceBuilder:
                         "kind": kind,
                         "timeoutSec": self._client.solver_timeout,
                     },
-                    lambda response, inv_id=inv_id: (
-                        self._client._decode_check_invariant(inv_id, response)
-                    ),
+                    decode_check_invariant,
                 )
             )
 
@@ -766,7 +772,7 @@ class JsonRpcClient:
                 ],
             },
         )
-        return response["calls"]
+        return cast(List[Dict[str, Any]], response["calls"])
 
     def sequence(self, strict: bool = False) -> OrderedSequenceBuilder:
         if self.session_id is None:
