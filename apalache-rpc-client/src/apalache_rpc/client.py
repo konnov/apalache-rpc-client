@@ -369,8 +369,8 @@ class OrderedSequenceBuilder:
                         "kind": kind,
                         "timeoutSec": self._client.solver_timeout,
                     },
-                    lambda response, inv_id=inv_id: self._client._decode_check_invariant(
-                        inv_id, response
+                    lambda response, inv_id=inv_id: (
+                        self._client._decode_check_invariant(inv_id, response)
                     ),
                 )
             )
