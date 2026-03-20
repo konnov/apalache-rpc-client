@@ -1,3 +1,13 @@
+# [0.7.0] - 2026-03-20
+
+## Added
+
+ - Enable gzip compression for JSON-RPC requests and responses by default.
+   Requests larger than 512 bytes are gzip-compressed (`Content-Encoding: gzip`)
+   and compressed responses are requested via `Accept-Encoding: gzip`.
+   Pass `compression=False` to `JsonRpcClient` to disable.
+   Requires Apalache server with compression support (Jetty `CompressionHandler`).
+
 # [0.6.0] - 2026-03-20
 
 ## Changed

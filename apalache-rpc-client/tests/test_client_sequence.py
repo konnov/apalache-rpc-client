@@ -1,9 +1,16 @@
+import json
+
 from apalache_rpc.client import (
     InvariantSatisfied,
     JsonRpcClient,
     SequenceExecutionError,
     TransitionEnabled,
 )
+
+
+def _payload(kwargs):
+    """Extract the JSON-RPC payload from post() kwargs."""
+    return json.loads(kwargs["data"])
 
 
 class FakeResponse:
@@ -65,11 +72,11 @@ def test_compact_returns_new_snapshot_id():
     captured = {}
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs["json"]
+        captured["json"] = _payload(kwargs)
         return FakeResponse(
             {
                 "jsonrpc": "2.0",
-                "id": kwargs["json"]["id"],
+                "id": captured["json"]["id"],
                 "result": {"sessionId": "session-1", "snapshotId": 7},
             }
         )
@@ -93,11 +100,11 @@ def test_sequence_executes_one_apply_in_order_request():
     captured = {}
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs["json"]
+        captured["json"] = _payload(kwargs)
         return FakeResponse(
             {
                 "jsonrpc": "2.0",
-                "id": kwargs["json"]["id"],
+                "id": captured["json"]["id"],
                 "result": {
                     "calls": [
                         {
@@ -144,11 +151,11 @@ def test_sequence_query_returns_state():
     captured = {}
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs["json"]
+        captured["json"] = _payload(kwargs)
         return FakeResponse(
             {
                 "jsonrpc": "2.0",
-                "id": kwargs["json"]["id"],
+                "id": captured["json"]["id"],
                 "result": {
                     "calls": [
                         {
@@ -189,11 +196,11 @@ def test_sequence_compact_decodes_snapshot_id():
     captured = {}
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs["json"]
+        captured["json"] = _payload(kwargs)
         return FakeResponse(
             {
                 "jsonrpc": "2.0",
-                "id": kwargs["json"]["id"],
+                "id": captured["json"]["id"],
                 "result": {
                     "calls": [
                         {
@@ -234,7 +241,7 @@ def test_sequence_marks_unexecuted_steps_after_failure():
     client._session.post = lambda *args, **kwargs: FakeResponse(
         {
             "jsonrpc": "2.0",
-            "id": kwargs["json"]["id"],
+            "id": _payload(kwargs)["id"],
             "result": {
                 "calls": [
                     {
@@ -266,7 +273,7 @@ def test_sequence_check_invariants_aggregates_results():
     client._session.post = lambda *args, **kwargs: FakeResponse(
         {
             "jsonrpc": "2.0",
-            "id": kwargs["json"]["id"],
+            "id": _payload(kwargs)["id"],
             "result": {
                 "calls": [
                     {
@@ -288,3 +295,88 @@ def test_sequence_check_invariants_aggregates_results():
         aggregate = seq.check_invariants(2, 0)
 
     assert isinstance(aggregate.result, InvariantSatisfied)
+
+
+# ── Compression tests ──────────────────────────────────────────────
+
+
+import gzip
+
+
+def test_large_payload_is_gzip_compressed():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse(
+            {"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}}
+        )
+
+    client._session.post = fake_post
+
+    # Build a payload large enough to exceed MIN_COMPRESS_SIZE (512 bytes)
+    big_equalities = {f"var_{i}": i for i in range(100)}
+    client._rpc_call("assumeState", {"sessionId": "session-1", "equalities": big_equalities})
+
+    # Verify the body was gzip-compressed
+    assert "Content-Encoding" in captured.get("headers", {}), "Expected Content-Encoding header"
+    assert captured["headers"]["Content-Encoding"] == "gzip"
+    decompressed = gzip.decompress(captured["data"])
+    parsed = json.loads(decompressed)
+    assert parsed["method"] == "assumeState"
+
+
+def test_small_payload_is_not_compressed():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse(
+            {"jsonrpc": "2.0", "id": 1, "result": {}}
+        )
+
+    client._session.post = fake_post
+
+    client._rpc_call("disposeSpec", {"sessionId": "session-1"})
+
+    # Small payloads should not have Content-Encoding
+    assert "headers" not in captured or "Content-Encoding" not in captured.get("headers", {})
+    # Body is plain JSON bytes
+    parsed = json.loads(captured["data"])
+    assert parsed["method"] == "disposeSpec"
+
+
+def test_compression_disabled_sends_plain_json():
+    client = JsonRpcClient(compression=False)
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeResponse(
+            {"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}}
+        )
+
+    client._session.post = fake_post
+
+    # Even with a large payload, compression=False should send plain JSON
+    big_equalities = {f"var_{i}": i for i in range(100)}
+    client._rpc_call("assumeState", {"sessionId": "session-1", "equalities": big_equalities})
+
+    assert "headers" not in captured or "Content-Encoding" not in captured.get("headers", {})
+    parsed = json.loads(captured["data"])
+    assert parsed["method"] == "assumeState"
+
+
+def test_compression_disabled_no_accept_encoding():
+    client = JsonRpcClient(compression=False)
+    assert client._session.headers["Accept-Encoding"] == "identity"
+
+
+def test_compression_enabled_sets_accept_encoding():
+    client = JsonRpcClient(compression=True)
+    assert client._session.headers["Accept-Encoding"] == "gzip"

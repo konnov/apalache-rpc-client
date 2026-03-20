@@ -6,10 +6,11 @@ server that implements the Apalache Model Checker API in the explorer mode.
 
 See: https://github.com/apalache-mc/apalache/tree/main/json-rpc
 
-Igor Konnov, 2025
+Igor Konnov, 2025-2026
 """
 
 import base64
+import gzip
 import json
 import logging
 from dataclasses import dataclass
@@ -443,20 +444,35 @@ class OrderedSequenceBuilder:
 class JsonRpcClient:
     """Client for JSON-RPC communication with Apalache server."""
 
+    # Minimum request body size in bytes before applying gzip compression.
+    # Matches the Apalache server's MIN_COMPRESS_SIZE setting.
+    MIN_COMPRESS_SIZE = 512
+
     def __init__(
-        self, hostname: str = "localhost", port: int = 8822, solver_timeout: int = 600
+        self,
+        hostname: str = "localhost",
+        port: int = 8822,
+        solver_timeout: int = 600,
+        compression: bool = True,
     ):
         self.rpc_url = f"http://{hostname}:{port}/rpc"
         self.port = port
         self.conn_timeout = 10.0
         self.solver_timeout = solver_timeout
+        self.compression = compression
         self.session_id: Optional[str] = None
         self._request_id = 0
         self.log = logging.getLogger(__name__)
         self._session = requests.Session()
-        self._session.headers.update(
-            {"Connection": "keep-alive", "Content-Type": "application/json"}
-        )
+        headers: Dict[str, str] = {
+            "Connection": "keep-alive",
+            "Content-Type": "application/json",
+        }
+        if compression:
+            headers["Accept-Encoding"] = "gzip"
+        else:
+            headers["Accept-Encoding"] = "identity"
+        self._session.headers.update(headers)
 
         retry_strategy = Retry(
             total=3,
@@ -511,9 +527,21 @@ class JsonRpcClient:
                 timeout = max(60, int(self.conn_timeout * 6))
 
         payload = self._rpc_payload(method, params)
+        body = json.dumps(payload).encode("utf-8")
 
         try:
-            response = self._session.post(self.rpc_url, json=payload, timeout=timeout)
+            if self.compression and len(body) >= self.MIN_COMPRESS_SIZE:
+                compressed = gzip.compress(body)
+                response = self._session.post(
+                    self.rpc_url,
+                    data=compressed,
+                    headers={"Content-Encoding": "gzip"},
+                    timeout=timeout,
+                )
+            else:
+                response = self._session.post(
+                    self.rpc_url, data=body, timeout=timeout
+                )
             response.raise_for_status()
         except requests.exceptions.Timeout as e:
             raise JsonRpcError(-1, f"Request timed out after {timeout}s: {e}")

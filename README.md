@@ -19,6 +19,12 @@ Apalache server. Start with this library, to get the initial setup working.
 Once, you have hit the limits, just fork this project and extend it to your
 needs.
 
+**Compression.** The client compresses request bodies with gzip when they
+exceed 512 bytes and requests gzip-compressed responses from the server.
+This is especially beneficial for `loadSpec` (base64-encoded source files)
+and `query` (full state/trace responses). Compression is enabled by default
+and can be disabled with `JsonRpcClient(compression=False)`.
+
 **Server API**. Refer to the [Apalache JSON-RPC API][] for the interaction
 details.
 
