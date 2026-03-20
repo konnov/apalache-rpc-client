@@ -39,6 +39,26 @@ def test_query_returns_both_trace_and_operator_value():
     }
 
 
+def test_query_returns_state():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    client._session.post = lambda *args, **kwargs: FakeResponse(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "state": {"counter": {"#bigint": "1"}},
+            },
+        }
+    )
+
+    result = client.query(["STATE"])
+
+    assert result == {
+        "state": {"counter": {"#bigint": "1"}},
+    }
+
+
 def test_compact_returns_new_snapshot_id():
     client = JsonRpcClient()
     client.session_id = "session-1"
@@ -116,6 +136,51 @@ def test_sequence_executes_one_apply_in_order_request():
     assert snapshot.result == 4
     assert view.result == {"operatorValue": {"#bigint": "1"}}
     assert list(seq.results()) == [transition, snapshot, view]
+
+
+def test_sequence_query_returns_state():
+    client = JsonRpcClient()
+    client.session_id = "session-1"
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured["json"] = kwargs["json"]
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": kwargs["json"]["id"],
+                "result": {
+                    "calls": [
+                        {
+                            "ok": True,
+                            "method": "query",
+                            "result": {
+                                "state": {"counter": {"#bigint": "2"}},
+                            },
+                        },
+                    ]
+                },
+            }
+        )
+
+    client._session.post = fake_post
+
+    with client.sequence() as seq:
+        state = seq.query(["STATE"])
+
+    assert captured["json"]["method"] == "applyInOrder"
+    assert captured["json"]["params"]["calls"] == [
+        {
+            "method": "query",
+            "params": {
+                "sessionId": "session-1",
+                "timeoutSec": client.solver_timeout,
+                "kinds": ["STATE"],
+            },
+        }
+    ]
+    assert state.result == {"state": {"counter": {"#bigint": "2"}}}
+    assert list(seq.results()) == [state]
 
 
 def test_sequence_compact_decodes_snapshot_id():

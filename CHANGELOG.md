@@ -1,3 +1,9 @@
+# [0.6.0] - 2026-03-20
+
+## Changed
+
+ - Add direct and ordered-sequence support for Apalache's `STATE` query kind to fetch the current state without serializing the full trace.
+
 # [0.5.0] - 2026-03-18
 
 ## Changed

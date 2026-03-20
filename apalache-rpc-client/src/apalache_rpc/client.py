@@ -580,6 +580,8 @@ class JsonRpcClient:
         result: Dict[str, Any] = {}
         if "OPERATOR" in kinds:
             result["operatorValue"] = response["operatorValue"]
+        if "STATE" in kinds:
+            result["state"] = response["state"]
         if "TRACE" in kinds:
             result["trace"] = response["trace"]
         return result
