@@ -539,9 +539,7 @@ class JsonRpcClient:
                     timeout=timeout,
                 )
             else:
-                response = self._session.post(
-                    self.rpc_url, data=body, timeout=timeout
-                )
+                response = self._session.post(self.rpc_url, data=body, timeout=timeout)
             response.raise_for_status()
         except requests.exceptions.Timeout as e:
             raise JsonRpcError(-1, f"Request timed out after {timeout}s: {e}")

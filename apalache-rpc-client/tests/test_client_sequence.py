@@ -1,3 +1,4 @@
+import gzip
 import json
 
 from apalache_rpc.client import (
@@ -300,9 +301,6 @@ def test_sequence_check_invariants_aggregates_results():
 # ── Compression tests ──────────────────────────────────────────────
 
 
-import gzip
-
-
 def test_large_payload_is_gzip_compressed():
     client = JsonRpcClient()
     client.session_id = "session-1"
@@ -310,18 +308,20 @@ def test_large_payload_is_gzip_compressed():
 
     def fake_post(*args, **kwargs):
         captured.update(kwargs)
-        return FakeResponse(
-            {"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}}
-        )
+        return FakeResponse({"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}})
 
     client._session.post = fake_post
 
     # Build a payload large enough to exceed MIN_COMPRESS_SIZE (512 bytes)
     big_equalities = {f"var_{i}": i for i in range(100)}
-    client._rpc_call("assumeState", {"sessionId": "session-1", "equalities": big_equalities})
+    client._rpc_call(
+        "assumeState",
+        {"sessionId": "session-1", "equalities": big_equalities},
+    )
 
     # Verify the body was gzip-compressed
-    assert "Content-Encoding" in captured.get("headers", {}), "Expected Content-Encoding header"
+    hdrs = captured.get("headers", {})
+    assert "Content-Encoding" in hdrs, "Expected Content-Encoding"
     assert captured["headers"]["Content-Encoding"] == "gzip"
     decompressed = gzip.decompress(captured["data"])
     parsed = json.loads(decompressed)
@@ -335,16 +335,15 @@ def test_small_payload_is_not_compressed():
 
     def fake_post(*args, **kwargs):
         captured.update(kwargs)
-        return FakeResponse(
-            {"jsonrpc": "2.0", "id": 1, "result": {}}
-        )
+        return FakeResponse({"jsonrpc": "2.0", "id": 1, "result": {}})
 
     client._session.post = fake_post
 
     client._rpc_call("disposeSpec", {"sessionId": "session-1"})
 
     # Small payloads should not have Content-Encoding
-    assert "headers" not in captured or "Content-Encoding" not in captured.get("headers", {})
+    hdrs = captured.get("headers", {})
+    assert "Content-Encoding" not in hdrs
     # Body is plain JSON bytes
     parsed = json.loads(captured["data"])
     assert parsed["method"] == "disposeSpec"
@@ -357,17 +356,19 @@ def test_compression_disabled_sends_plain_json():
 
     def fake_post(*args, **kwargs):
         captured.update(kwargs)
-        return FakeResponse(
-            {"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}}
-        )
+        return FakeResponse({"jsonrpc": "2.0", "id": 1, "result": {"snapshotId": 3}})
 
     client._session.post = fake_post
 
     # Even with a large payload, compression=False should send plain JSON
     big_equalities = {f"var_{i}": i for i in range(100)}
-    client._rpc_call("assumeState", {"sessionId": "session-1", "equalities": big_equalities})
+    client._rpc_call(
+        "assumeState",
+        {"sessionId": "session-1", "equalities": big_equalities},
+    )
 
-    assert "headers" not in captured or "Content-Encoding" not in captured.get("headers", {})
+    hdrs = captured.get("headers", {})
+    assert "Content-Encoding" not in hdrs
     parsed = json.loads(captured["data"])
     assert parsed["method"] == "assumeState"
 
