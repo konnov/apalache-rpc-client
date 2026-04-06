@@ -453,12 +453,14 @@ class JsonRpcClient:
         hostname: str = "localhost",
         port: int = 8822,
         solver_timeout: int = 600,
+        load_spec_timeout: Optional[int] = None,
         compression: bool = True,
     ):
         self.rpc_url = f"http://{hostname}:{port}/rpc"
         self.port = port
         self.conn_timeout = 10.0
         self.solver_timeout = solver_timeout
+        self.load_spec_timeout = load_spec_timeout
         self.compression = compression
         self.session_id: Optional[str] = None
         self._request_id = 0
@@ -656,7 +658,9 @@ class JsonRpcClient:
         }
 
         try:
-            response = self._rpc_call("loadSpec", params)
+            response = self._rpc_call(
+                "loadSpec", params, timeout=self.load_spec_timeout
+            )
 
             self.session_id = response["sessionId"]
             snapshot_id = response["snapshotId"]

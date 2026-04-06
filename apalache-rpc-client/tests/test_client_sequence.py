@@ -11,7 +11,11 @@ from apalache_rpc.client import (
 
 def _payload(kwargs):
     """Extract the JSON-RPC payload from post() kwargs."""
-    return json.loads(kwargs["data"])
+    data = kwargs["data"]
+    headers = kwargs.get("headers", {})
+    if headers.get("Content-Encoding") == "gzip":
+        data = gzip.decompress(data)
+    return json.loads(data)
 
 
 class FakeResponse:
@@ -93,6 +97,84 @@ def test_compact_returns_new_snapshot_id():
         "timeoutSec": client.solver_timeout,
     }
     assert result == 7
+
+
+def test_load_spec_uses_explicit_timeout_override():
+    client = JsonRpcClient(load_spec_timeout=1800)
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured["timeout"] = kwargs["timeout"]
+        captured["json"] = _payload(kwargs)
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": captured["json"]["id"],
+                "result": {
+                    "sessionId": "session-1",
+                    "snapshotId": 1,
+                    "specParameters": {
+                        "initTransitions": [],
+                        "nextTransitions": [],
+                        "stateInvariants": [],
+                        "actionInvariants": [],
+                    },
+                },
+            }
+        )
+
+    client._session.post = fake_post
+
+    result = client.load_spec(
+        sources=[__file__],
+        init="Init",
+        next="Next",
+        invariants=["Inv"],
+        view="View",
+    )
+
+    assert captured["json"]["method"] == "loadSpec"
+    assert captured["timeout"] == 1800
+    assert result["snapshot_id"] == 1
+
+
+def test_load_spec_uses_default_long_running_timeout_when_override_absent():
+    client = JsonRpcClient(solver_timeout=700)
+    captured = {}
+
+    def fake_post(*args, **kwargs):
+        captured["timeout"] = kwargs["timeout"]
+        captured["json"] = _payload(kwargs)
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": captured["json"]["id"],
+                "result": {
+                    "sessionId": "session-1",
+                    "snapshotId": 2,
+                    "specParameters": {
+                        "initTransitions": [],
+                        "nextTransitions": [],
+                        "stateInvariants": [],
+                        "actionInvariants": [],
+                    },
+                },
+            }
+        )
+
+    client._session.post = fake_post
+
+    result = client.load_spec(
+        sources=[__file__],
+        init="Init",
+        next="Next",
+        invariants=["Inv"],
+        view="View",
+    )
+
+    assert captured["json"]["method"] == "loadSpec"
+    assert captured["timeout"] == 730
+    assert result["snapshot_id"] == 2
 
 
 def test_sequence_executes_one_apply_in_order_request():
